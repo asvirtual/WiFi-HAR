@@ -37,7 +37,7 @@ class CFR(Dataset):
 
         for ci, campaign in enumerate(["a", "b", "c"]):
             for idx, file in enumerate(os.listdir(f"./{folder}{campaign}")):
-                print(ci, idx)
+                print(ci, idx, file)
                 with open(f"{folder}{campaign}/{file}", "rb") as f:
                     self.x[idx * (ci + 1)] = torch.from_numpy(pickle.load(f)).float()
                     self.y[idx * (ci + 1)] = torch.tensor(self.LABEL_MAP[file.split("_")[1].split("_")[0]]).long()

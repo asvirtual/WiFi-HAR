@@ -21,7 +21,6 @@ class BaselineNet(torch.nn.Module):
             ReLU(),
             Linear(in_features=128,out_features=8),
         )
-        self.softmax = Softmax(dim=1)
         self.apply(self._init_weights)
 
 
@@ -33,8 +32,7 @@ class BaselineNet(torch.nn.Module):
 
     
     def forward(self,x) -> torch.Tensor:
-        y=self.softmax(self.sequential(x))
-        return y        
+        return self.sequential(x)
 
 
 class InceptionModule(torch.nn.Module):
@@ -75,8 +73,6 @@ class InceptionModule(torch.nn.Module):
         y = torch.cat((x1, x2, x3), dim=1)
         return y
 
-
-
 model = BaselineNet()
 dataset = CFR(folder="../data/doppler_traces/S1", transform=ToTensor())
 total_len = len(dataset)
@@ -99,7 +95,6 @@ valid_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True,
 
 test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=pin_memory)
-
 
 
 opt = Adam(model.parameters(), lr=1e-3, weight_decay = 0)
@@ -149,4 +144,5 @@ for epoch in range(epochs):
         print("Saved Model")
         torch.save(model.state_dict(), "resnet50.pt")
         best_val = val_loss
+
 
