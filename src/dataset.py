@@ -13,7 +13,8 @@ Folder/file naming and structure
 
 '''
 
-
+SAMPLE_SIZE_ROWS = 340
+SAMPLE_SIZE_COLS = 100
 class CFR(Dataset):
     LABEL_MAP = {
         "W": 0,
@@ -24,24 +25,41 @@ class CFR(Dataset):
         "S": 4,
         "C": 5,
         "G": 6,
-        "E": 7
+        "H": 7,
+        "E": 8
     }
 
     def __init__(self, folder, transform=None, max_samples=None):
-        dim = 0
+        dim = 1
         for campaign in ["a", "b", "c"]:
-            dim += len(os.listdir(f"{folder}{campaign}")) 
+            for file in os.listdir(f"./{folder}{campaign}"):
+                with open(f"{folder}{campaign}/{file}", "rb") as f:
+                    data = torch.from_numpy(pickle.load(f)).float()
+                    # for i in range((data.shape[0] // SAMPLE_SIZE_ROWS)):
+                    #     dim += 1
+                    dim += (data.shape[0] // SAMPLE_SIZE_ROWS)
 
-        self.x = torch.zeros((dim, 340, 100))
+        self.x = torch.zeros((dim, SAMPLE_SIZE_ROWS, SAMPLE_SIZE_COLS))
         self.y = torch.zeros(dim).long()
 
-        for ci, campaign in enumerate(["a", "b", "c"]):
-            for idx, file in enumerate(os.listdir(f"./{folder}{campaign}")):
-                print(ci, idx, file)
-                with open(f"{folder}{campaign}/{file}", "rb") as f:
-                    self.x[idx * (ci + 1)] = torch.from_numpy(pickle.load(f)).float()
-                    self.y[idx * (ci + 1)] = torch.tensor(self.LABEL_MAP[file.split("_")[1].split("_")[0]]).long()
+        # ci = 0, idx = 0, i = 0 -> index = 0 (first block first file first subfolder)
+        # ci = 0, idx = 0, i = 1 -> index = 1 (second block first file first subfolder)
+        # ...
+        # ci = 0, idx = 1, i = 0 -> index =  (first block second file first subfolder)
 
+        counter = 0
+        for campaign in ["a", "b", "c"]:
+            for file in os.listdir(f"./{folder}{campaign}"):
+                with open(f"{folder}{campaign}/{file}", "rb") as f:
+                    data = torch.from_numpy(pickle.load(f)).float()
+                    label = self.LABEL_MAP[file.split("_")[1].split("_")[0]]
+                    for i in range((data.shape[0] // SAMPLE_SIZE_ROWS)):
+                        counter += 1
+                        self.x[counter] = data[SAMPLE_SIZE_ROWS * i:SAMPLE_SIZE_ROWS * (i + 1),:]
+                        self.y[counter] = torch.tensor(label).long()
+
+        print(counter, dim)
+        print(self.x[-1,:])
         self.transform = transform
         self.max_samples = max_samples
 
