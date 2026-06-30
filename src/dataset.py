@@ -13,6 +13,8 @@ Folder/file naming and structure
 
 '''
 
+SAMPLE_SIZE_ROWS = 340
+SAMPLE_SIZE_COLS = 100
 
 class CFR(Dataset):
     LABEL_MAP = {
@@ -23,24 +25,39 @@ class CFR(Dataset):
         "L": 3,
         "S": 4,
         "C": 5,
-        "G": 6,
-        "E": 7
+        "E": 6,
+        "H": 7,
     }
 
+    def sliding_window(self, matrix, window_size, step_size):
+        total_frames, pack = matrix.shape
+        windows = []
+        for index in range(0, total_frames - window_size + 1, step_size):
+            window = matrix[index:index + window_size, :]
+            windows.append(window)
+        return torch.stack(windows)
+
     def __init__(self, folder, transform=None, max_samples=None):
-        dim = 0
+
+        x_list = []
+        y_list = []
+
         for campaign in ["a", "b", "c"]:
-            dim += len(os.listdir(f"{folder}{campaign}")) 
-
-        self.x = torch.zeros((dim, 340, 100))
-        self.y = torch.zeros(dim).long()
-
-        for ci, campaign in enumerate(["a", "b", "c"]):
-            for idx, file in enumerate(os.listdir(f"./{folder}{campaign}")):
-                print(ci, idx, file)
+            for file in os.listdir(f"./{folder}{campaign}"):
                 with open(f"{folder}{campaign}/{file}", "rb") as f:
-                    self.x[idx * (ci + 1)] = torch.from_numpy(pickle.load(f)).float()
-                    self.y[idx * (ci + 1)] = torch.tensor(self.LABEL_MAP[file.split("_")[1].split("_")[0]]).long()
+                    matrix = torch.from_numpy(pickle.load(f)).float()
+                    label_id = torch.tensor(self.LABEL_MAP[file.split("_")[1]]).long()
+                    windows = self.sliding_window(matrix, SAMPLE_SIZE_ROWS, 50)
+
+                    x_list.append(windows)
+                    labels = torch.full((windows.shape[0],), label_id, dtype=torch.long)
+                    y_list.append(labels)
+
+                    
+                print(f"Loaded {file} -> extracted {windows.shape[0]} windows with label {label_id}")
+        
+        self.x = torch.cat(x_list, dim=0)
+        self.y = torch.cat(y_list, dim=0)
 
         self.transform = transform
         self.max_samples = max_samples
