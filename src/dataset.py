@@ -18,37 +18,47 @@ SAMPLE_SIZE_COLS = 100
 
 class CFR(Dataset):
     LABEL_MAP = {
-        "W": 0,
-        "R": 1,
-        "J1": 2,
-        "J2": 2,
-        "L": 3,
-        "S": 4,
-        "C": 5,
-        "E": 6,
-        "H": 7,
+        "C": 0,
+        "E": 1,
+        "H": 2,
+        "J1": 3,
+        "J2": 3,
+        "L": 4,
+        "R": 5,
+        "S": 6,
+        "W": 7,
     }
 
-    def sliding_window(self, matrix, window_size, step_size):
+    def sliding_window(self, matrix, window_size, stride):
         total_frames, pack = matrix.shape
         windows = []
-        for index in range(0, total_frames - window_size + 1, step_size):
+        for index in range(0, total_frames - window_size + 1, stride):
             window = matrix[index:index + window_size, :]
             windows.append(window)
         return torch.stack(windows)
 
-    def __init__(self, folder, transform=None, max_samples=None):
+    def __init__(self, folder, campaigns, split_mode="train", stride=50, transform=None, max_samples=None):
 
         x_list = []
         y_list = []
 
-        for campaign in ["a", "b", "c"]:
+        for campaign in campaigns:
+            if not os.path.exists(f"./{folder}{campaign}"):
+                continue
             for file in os.listdir(f"./{folder}{campaign}"):
                 with open(f"{folder}{campaign}/{file}", "rb") as f:
                     matrix = torch.from_numpy(pickle.load(f)).float()
-                    label_id = torch.tensor(self.LABEL_MAP[file.split("_")[1]]).long()
-                    windows = self.sliding_window(matrix, SAMPLE_SIZE_ROWS, 50)
+                    if folder == "../data/doppler_traces/S1":
+                        if split_mode == "val":
+                            end_point = matrix.shape[0] // 2
+                            matrix = matrix[:end_point, :]
 
+                        if split_mode == "test":
+                            start_point = matrix.shape[0] // 2
+                            matrix = matrix[start_point:, :]
+
+                    label_id = torch.tensor(self.LABEL_MAP[file.split("_")[1]]).long()
+                    windows = self.sliding_window(matrix, SAMPLE_SIZE_ROWS, stride)
                     x_list.append(windows)
                     labels = torch.full((windows.shape[0],), label_id, dtype=torch.long)
                     y_list.append(labels)

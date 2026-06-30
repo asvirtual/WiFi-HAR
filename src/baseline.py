@@ -66,7 +66,7 @@ class InceptionModule(torch.nn.Module):
                 module.bias.data.zero_()
         
     def forward(self, x) -> torch.Tensor:
-        x1 = self.relu(self.block1(x))
+        x1 = self.block1(x)
         x2 = self.relu(self.convBlock1(x))
         x3 = self.convBlock2(x)
         print(x1.shape, x2.shape, x3.shape)
@@ -74,17 +74,10 @@ class InceptionModule(torch.nn.Module):
         return y
 
 model = BaselineNet()
-dataset = CFR(folder="../data/doppler_traces/S1")
-total_len = len(dataset)
 
-train_len, val_len = int(total_len * 0.6), int(total_len * 0.2)
-test_len = total_len - train_len - val_len
-
-train_dataset, val_dataset, test_dataset = random_split(
-    dataset,
-    [train_len, val_len, test_len],
-    generator=torch.Generator().manual_seed(42)
-)
+train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train")
+val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val")
+test_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="test")
 
 batch_size = 64
 num_workers = 0
@@ -93,10 +86,10 @@ pin_memory = torch.cuda.is_available()
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=pin_memory)
 
-valid_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True,
+valid_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
                               num_workers=num_workers, pin_memory=pin_memory)
 
-test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True,
+test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                               num_workers=num_workers, pin_memory=pin_memory)
 
 
