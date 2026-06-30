@@ -54,7 +54,7 @@ class CFR(Dataset):
                     y_list.append(labels)
 
                     
-                print(f"Loaded {file} -> extracted {windows.shape[0]} windows with label {label_id}")
+                #print(f"Loaded {file} -> extracted {windows.shape[0]} windows with label {label_id}")
         
         self.x = torch.cat(x_list, dim=0)
         self.y = torch.cat(y_list, dim=0)
@@ -72,4 +72,5 @@ class CFR(Dataset):
         y = self.y[idx]
         if self.transform:
             x = self.transform(x)
+        x = x.unsqueeze_(0)  # Add channel dimension
         return x, y 

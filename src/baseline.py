@@ -1,5 +1,5 @@
 import torch
-from torch.nn import Conv2d, MaxPool2d, ReLU, Softmax, Dropout, Sequential, Linear, Flatten
+from torch.nn import Conv2d, MaxPool2d, ReLU, Softmax, Dropout, Sequential, Linear, Flatten, ZeroPad2d
 import numpy as np
 from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision.transforms import ToTensor
@@ -48,9 +48,9 @@ class InceptionModule(torch.nn.Module):
         self.convBlock2 = Sequential(                   
             Conv2d(kernel_size=1, stride=1, in_channels=1, out_channels=3),
             ReLU(),
-            Conv2d(kernel_size=2, stride=1, in_channels=3, out_channels=6),
+            Conv2d(kernel_size=2, stride=1, in_channels=3, out_channels=6, padding='same'),
             ReLU(),
-            Conv2d(kernel_size=4, stride=2, in_channels=6, out_channels=9),
+            Conv2d(kernel_size=4, stride=2, in_channels=6, out_channels=9, padding=1),
             ReLU()
         )
 
