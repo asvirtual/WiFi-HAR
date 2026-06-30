@@ -37,6 +37,14 @@ class CFR(Dataset):
             windows.append(window)
         return torch.stack(windows)
 
+    def sliding_window(self, matrix, window_size, step_size):
+        total_frames, pack = matrix.shape
+        windows = []
+        for index in range(0, total_frames - window_size + 1, step_size):
+            window = matrix[index:index + window_size, :]
+            windows.append(window)
+        return torch.stack(windows)
+
     def __init__(self, folder, transform=None, max_samples=None):
 
         x_list = []

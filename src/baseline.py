@@ -74,12 +74,15 @@ class InceptionModule(torch.nn.Module):
         return y
 
 model = BaselineNet()
-dataset = CFR(folder="../data/doppler_traces/S1", transform=ToTensor())
+dataset = CFR(folder="../data/doppler_traces/S1")
 total_len = len(dataset)
+
+train_len, val_len = int(total_len * 0.6), int(total_len * 0.2)
+test_len = total_len - train_len - val_len
 
 train_dataset, val_dataset, test_dataset = random_split(
     dataset,
-    [total_len * 0.6, total_len * 0.2, total_len * 0.2],
+    [train_len, val_len, test_len],
     generator=torch.Generator().manual_seed(42)
 )
 
