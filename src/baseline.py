@@ -98,7 +98,10 @@ loss_fn = CrossEntropyLoss()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 
-epochs=10
+epochs = 100
+patience = 10
+counter = 0
+
 best_val = np.inf
 checkpoint_path = "best_model.pt"
 
@@ -151,6 +154,12 @@ for epoch in range(epochs):
         print("Saved Model")
         torch.save(model.state_dict(), checkpoint_path)
         best_val = val_loss
+        counter = 0
+    else:
+        counter += 1
+    if counter >= patience:
+        print(f"[EARLY STOPPING] Validation loss hasn't improved for {patience} epochs.")
+        break
 
 # TESTING
 model.load_state_dict(torch.load(checkpoint_path))
