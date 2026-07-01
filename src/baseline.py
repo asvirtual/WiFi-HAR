@@ -1,5 +1,5 @@
 import torch
-from torch.nn import Conv2d, MaxPool2d, ReLU, Softmax, Dropout, Sequential, Linear, Flatten, ZeroPad2d
+from torch.nn import Conv2d, MaxPool2d, ReLU, Softmax, Dropout, Sequential, Linear, Flatten
 import numpy as np
 from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision.transforms import ToTensor
@@ -97,9 +97,13 @@ opt = Adam(model.parameters(), lr=1e-3, weight_decay = 0)
 loss_fn = CrossEntropyLoss()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
+
 epochs=10
 best_val = np.inf
+checkpoint_path = "best_model.pt"
+
 for epoch in range(epochs):
+    # TRAINING
     model.train()
     print(f"Epoch: {epoch+1}")
     train_iterator = tqdm(train_dataloader)
@@ -108,37 +112,71 @@ for epoch in range(epochs):
         batch_y = batch_y.to(device)
 
         y_pred = model(batch_x)
-
         loss = loss_fn(y_pred, batch_y)
 
         opt.zero_grad()
         loss.backward()
         opt.step()
-        train_iterator.set_description(f"Train loss: {loss.detach().cpu().numpy()}")
 
+        train_iterator.set_description(f"Train loss: {loss.item():.5f}")
+
+    # VALIDATION
     model.eval()
+    cumval_loss = 0
+    nval_correct = 0
+    nval = 0
+
     with torch.no_grad():
-        predictions = []
-        true = []
         val_iterator = tqdm(valid_dataloader)
         for batch_x, batch_y in val_iterator:
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
 
             y_pred = model(batch_x)
+            batch_loss = loss_fn(y_pred, batch_y)
 
-            predictions.append(y_pred)
-            true.append(batch_y)
-            val_iterator.set_description(f"Validation loss: {loss.detach().cpu().numpy()}")
-        predictions = torch.cat(predictions, dim=0)
-        true = torch.cat(true, dim=0)
-        val_loss = loss_fn(predictions, true)
-        val_acc = None # TODO
+            cumval_loss += batch_loss.item() * batch_x.size(0)
+            nval += batch_x.size(0)
+
+            predictions = y_pred.argmax(dim=1)
+            nval_correct += (predictions == batch_y).sum().item()
+
+            val_iterator.set_description(f"Validation loss: {batch_loss.item():.5f}")
+
+        val_loss = cumval_loss / nval
+        val_acc = nval_correct / nval
         print(f"loss: {val_loss}, accuracy: {val_acc}")
 
     if val_loss < best_val:
         print("Saved Model")
-        torch.save(model.state_dict(), "resnet50.pt")
+        torch.save(model.state_dict(), checkpoint_path)
         best_val = val_loss
 
+# TESTING
+model.load_state_dict(torch.load(checkpoint_path))
+model.eval()
 
+cumtest_loss = 0
+ntest_correct = 0
+ntest = 0
+
+with torch.no_grad():
+    test_iterator = tqdm(test_dataloader)
+    for batch_x, batch_y in test_iterator:
+        batch_x = batch_x.to(device)
+        batch_y = batch_y.to(device)
+
+        y_pred = model(batch_x)
+        batch_loss = loss_fn(y_pred, batch_y)
+
+        cumtest_loss += batch_loss.item() * batch_x.size(0)
+        ntest += batch_x.size(0)
+
+        predictions = y_pred.argmax(dim=1)
+        ntest_correct += (predictions == batch_y).sum().item()
+
+        test_iterator.set_description(f"Test loss: {batch_loss.item():.5f}")
+
+test_loss = cumtest_loss / ntest
+test_acc = ntest_correct / ntest
+print(f"loss: {test_loss}, accuracy: {test_acc}")
