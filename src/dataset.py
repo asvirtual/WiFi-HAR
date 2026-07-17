@@ -57,6 +57,9 @@ class CFR(Dataset):
                             start_point = matrix.shape[0] // 2
                             matrix = matrix[start_point:, :]
 
+                    if matrix.shape[0] < SAMPLE_SIZE_ROWS:
+                        continue  # Skip files that are too short
+
                     label_id = torch.tensor(self.LABEL_MAP[file.split("_")[1]]).long()
                     windows = self.sliding_window(matrix, SAMPLE_SIZE_ROWS, stride)
                     x_list.append(windows)
@@ -80,7 +83,7 @@ class CFR(Dataset):
     def __getitem__(self, idx):
         x = self.x[idx]
         y = self.y[idx]
+        x = x.unsqueeze(0)  # Add channel dimension
         if self.transform:
             x = self.transform(x)
-        x = x.unsqueeze_(0)  # Add channel dimension
         return x, y 

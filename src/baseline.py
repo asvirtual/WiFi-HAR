@@ -98,8 +98,8 @@ loss_fn = CrossEntropyLoss()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 
-epochs = 100
-patience = 10
+epochs = 50
+patience = 5
 counter = 0
 
 best_val = np.inf
@@ -189,3 +189,8 @@ with torch.no_grad():
 test_loss = cumtest_loss / ntest
 test_acc = ntest_correct / ntest
 print(f"loss: {test_loss}, accuracy: {test_acc}")
+
+
+# By using as training set the first two days on the first monitor position and the third as training set we obtain:
+# Test loss: 1.2525141948078449, accuracy: 0.5575328265376641
+
