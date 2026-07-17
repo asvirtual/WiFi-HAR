@@ -1,5 +1,6 @@
 import torch
-from torch.nn import Conv2d, MaxPool2d, ReLU, Softmax, Dropout, Sequential, Linear, Flatten
+import matplotlib.pyplot as plt
+from torch.nn import AdaptiveAvgPool2d, Conv2d, Dropout2d, MaxPool2d, ReLU, Softmax, Dropout, Sequential, Linear, Flatten, BatchNorm2d, BatchNorm1d
 import numpy as np
 from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision.transforms import ToTensor
@@ -14,11 +15,15 @@ class BaselineNet(torch.nn.Module):
         self.sequential=Sequential(
             InceptionModule(),
             Conv2d(kernel_size=1,stride=1,padding=0,out_channels=3,in_channels=15),
+            BatchNorm2d(3),
             ReLU(),
+            AdaptiveAvgPool2d((34,10)),
             Flatten(),
             Dropout(0.2),
-            Linear(in_features=25500, out_features=128),
+            Linear(in_features=1020, out_features=128),
+            BatchNorm1d(128),
             ReLU(),
+            Dropout(0.2),
             Linear(in_features=128,out_features=8),
         )
         self.apply(self._init_weights)
@@ -43,15 +48,20 @@ class InceptionModule(torch.nn.Module):
         
         # Conv @5 (2x2) stride 2
         self.convBlock1 = Conv2d(kernel_size=2, stride=2, out_channels=5, in_channels=1)
+        self.bn1 = BatchNorm2d(num_features=5)
 
         # Conv 3@ (1x1) stride 1 -> 6@ (2x2) stride 1 -> 9@ (4x4) stride 2
         self.convBlock2 = Sequential(                   
             Conv2d(kernel_size=1, stride=1, in_channels=1, out_channels=3),
+            BatchNorm2d(3),
             ReLU(),
             Conv2d(kernel_size=2, stride=1, in_channels=3, out_channels=6, padding='same'),
+            BatchNorm2d(6),
             ReLU(),
             Conv2d(kernel_size=4, stride=2, in_channels=6, out_channels=9, padding=1),
-            ReLU()
+            BatchNorm2d(9),
+            ReLU(),
+            Dropout2d(0.1)
         )
 
         self.relu = ReLU()
@@ -67,7 +77,7 @@ class InceptionModule(torch.nn.Module):
         
     def forward(self, x) -> torch.Tensor:
         x1 = self.block1(x)
-        x2 = self.relu(self.convBlock1(x))
+        x2 = self.relu(self.bn1(self.convBlock1(x)))
         x3 = self.convBlock2(x)
         print(x1.shape, x2.shape, x3.shape)
         y = torch.cat((x1, x2, x3), dim=1)
@@ -98,17 +108,27 @@ loss_fn = CrossEntropyLoss()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 
-epochs = 50
-patience = 5
+epochs = 70
+patience = 7
 counter = 0
 
 best_val = np.inf
 checkpoint_path = "best_model.pt"
 
+history = {
+    "train": [],
+    "val": [],
+    "acc": []
+}
+
+
 for epoch in range(epochs):
     # TRAINING
     model.train()
     print(f"Epoch: {epoch+1}")
+
+    cumtrain_loss = 0
+    ntrain = 0
     train_iterator = tqdm(train_dataloader)
     for batch_x, batch_y in train_iterator:
         batch_x = batch_x.to(device)
@@ -121,7 +141,11 @@ for epoch in range(epochs):
         loss.backward()
         opt.step()
 
+        cumtrain_loss += loss.item() * batch_x.size(0)
+        ntrain += batch_x.size(0)
         train_iterator.set_description(f"Train loss: {loss.item():.5f}")
+
+    history["train"].append(cumtrain_loss / ntrain)
 
     # VALIDATION
     model.eval()
@@ -148,7 +172,9 @@ for epoch in range(epochs):
 
         val_loss = cumval_loss / nval
         val_acc = nval_correct / nval
-        print(f"loss: {val_loss}, accuracy: {val_acc}")
+        history["val"].append(val_loss)
+        history["acc"] = history.get("val_acc", []) + [val_acc]
+        print(f"Validation loss: {val_loss}, accuracy: {val_acc}")
 
     if val_loss < best_val:
         print("Saved Model")
@@ -160,6 +186,32 @@ for epoch in range(epochs):
     if counter >= patience:
         print(f"[EARLY STOPPING] Validation loss hasn't improved for {patience} epochs.")
         break
+
+
+plt.figure(figsize=(12, 5))
+
+# Grafico delle Loss (Train vs Validation)
+plt.subplot(1, 2, 1)
+plt.plot(history["train"], label="Train Loss", color="blue", lw=2)
+plt.plot(history["val"], label="Validation Loss", color="orange", lw=2)
+plt.title("Andamento della Loss")
+plt.xlabel("Epoche")
+plt.ylabel("Loss")
+plt.legend()
+plt.grid(True)
+
+# Grafico dell'Accuratezza di Validation
+plt.subplot(1, 2, 2)
+plt.plot(history["acc"], label="Val Accuracy", color="green", lw=2)
+plt.title("Accuratezza di Validazione")
+plt.xlabel("Epoche")
+plt.ylabel("Accuracy")
+plt.legend()
+plt.grid(True)
+
+plt.tight_layout()
+plt.savefig("training_curves.png")  # Salva il grafico come immagine sul PC
+plt.show()
 
 # TESTING
 model.load_state_dict(torch.load(checkpoint_path))
