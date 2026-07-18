@@ -15,13 +15,11 @@ class BaselineNet(torch.nn.Module):
         self.sequential=Sequential(
             InceptionModule(),
             Conv2d(kernel_size=1,stride=1,padding=0,out_channels=3,in_channels=15),
-            BatchNorm2d(3),
             ReLU(),
-            AdaptiveAvgPool2d((34,10)),
+            MaxPool2d(kernel_size=2, stride=2),
             Flatten(),
             Dropout(0.2),
-            Linear(in_features=1020, out_features=128),
-            BatchNorm1d(128),
+            Linear(in_features=6375, out_features=128),
             ReLU(),
             Dropout(0.2),
             Linear(in_features=128,out_features=8),
@@ -53,13 +51,10 @@ class InceptionModule(torch.nn.Module):
         # Conv 3@ (1x1) stride 1 -> 6@ (2x2) stride 1 -> 9@ (4x4) stride 2
         self.convBlock2 = Sequential(                   
             Conv2d(kernel_size=1, stride=1, in_channels=1, out_channels=3),
-            BatchNorm2d(3),
             ReLU(),
             Conv2d(kernel_size=2, stride=1, in_channels=3, out_channels=6, padding='same'),
-            BatchNorm2d(6),
             ReLU(),
             Conv2d(kernel_size=4, stride=2, in_channels=6, out_channels=9, padding=1),
-            BatchNorm2d(9),
             ReLU(),
             Dropout2d(0.1)
         )
@@ -173,7 +168,7 @@ for epoch in range(epochs):
         val_loss = cumval_loss / nval
         val_acc = nval_correct / nval
         history["val"].append(val_loss)
-        history["acc"] = history.get("val_acc", []) + [val_acc]
+        history["acc"].append(val_acc)
         print(f"Validation loss: {val_loss}, accuracy: {val_acc}")
 
     if val_loss < best_val:
