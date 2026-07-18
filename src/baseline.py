@@ -1,3 +1,5 @@
+import json
+
 import torch
 import matplotlib.pyplot as plt
 from torch.nn import AdaptiveAvgPool2d, Conv2d, Dropout2d, MaxPool2d, ReLU, Softmax, Dropout, Sequential, Linear, Flatten, BatchNorm2d, BatchNorm1d
@@ -82,7 +84,6 @@ model = BaselineNet()
 
 train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train")
 val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val")
-test_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="test")
 
 batch_size = 64
 num_workers = 0
@@ -92,9 +93,6 @@ train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True
                               num_workers=num_workers, pin_memory=pin_memory)
 
 valid_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
-                              num_workers=num_workers, pin_memory=pin_memory)
-
-test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                               num_workers=num_workers, pin_memory=pin_memory)
 
 
@@ -108,7 +106,7 @@ patience = 7
 counter = 0
 
 best_val = np.inf
-checkpoint_path = "best_model.pt"
+checkpoint_path = "baseline_model.pt"
 
 history = {
     "train": [],
@@ -183,61 +181,7 @@ for epoch in range(epochs):
         break
 
 
-plt.figure(figsize=(12, 5))
+history_path = "plot_data/training_history_baseline.json"
 
-# Grafico delle Loss (Train vs Validation)
-plt.subplot(1, 2, 1)
-plt.plot(history["train"], label="Train Loss", color="blue", lw=2)
-plt.plot(history["val"], label="Validation Loss", color="orange", lw=2)
-plt.title("Loss Evolution")
-plt.xlabel("Epochs")
-plt.ylabel("Loss")
-plt.legend()
-plt.grid(True)
-
-# Grafico dell'Accuratezza di Validation
-plt.subplot(1, 2, 2)
-plt.plot(history["acc"], label="Val Accuracy", color="green", lw=2)
-plt.title("Validation Accuracy Evolution")
-plt.xlabel("Epochs")
-plt.ylabel("Accuracy")
-plt.legend()
-plt.grid(True)
-
-plt.tight_layout()
-plt.savefig("training_curves.png")  # Salva il grafico come immagine sul PC
-plt.show()
-
-# TESTING
-model.load_state_dict(torch.load(checkpoint_path))
-model.eval()
-
-cumtest_loss = 0
-ntest_correct = 0
-ntest = 0
-
-with torch.no_grad():
-    test_iterator = tqdm(test_dataloader)
-    for batch_x, batch_y in test_iterator:
-        batch_x = batch_x.to(device)
-        batch_y = batch_y.to(device)
-
-        y_pred = model(batch_x)
-        batch_loss = loss_fn(y_pred, batch_y)
-
-        cumtest_loss += batch_loss.item() * batch_x.size(0)
-        ntest += batch_x.size(0)
-
-        predictions = y_pred.argmax(dim=1)
-        ntest_correct += (predictions == batch_y).sum().item()
-
-        test_iterator.set_description(f"Test loss: {batch_loss.item():.5f}")
-
-test_loss = cumtest_loss / ntest
-test_acc = ntest_correct / ntest
-print(f"loss: {test_loss}, accuracy: {test_acc}")
-
-
-#By using as training set the first two days on the first monitor position and the third as training set we obtain:
-#Test loss: 1.2525141948078449, accuracy: 0.5575328265376641
-
+with open(history_path, "w") as f:
+    json.dump(history, f, indent=4)
