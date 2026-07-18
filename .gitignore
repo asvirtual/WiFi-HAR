@@ -2,4 +2,4 @@ src/test.py
 __pycache__/
 data/*
 .vscode/*
-best_model.pt
+baseline_model.pt

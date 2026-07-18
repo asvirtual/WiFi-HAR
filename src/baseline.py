@@ -16,12 +16,12 @@ class BaselineNet(torch.nn.Module):
             InceptionModule(),
             Conv2d(kernel_size=1,stride=1,padding=0,out_channels=3,in_channels=15),
             ReLU(),
-            MaxPool2d(kernel_size=2, stride=2),
+            #MaxPool2d(kernel_size=2, stride=2),
             Flatten(),
             Dropout(0.2),
-            Linear(in_features=6375, out_features=128),
+            Linear(in_features=25500, out_features=128),
             ReLU(),
-            Dropout(0.2),
+            #Dropout(0.2),
             Linear(in_features=128,out_features=8),
         )
         self.apply(self._init_weights)
@@ -46,7 +46,7 @@ class InceptionModule(torch.nn.Module):
         
         # Conv @5 (2x2) stride 2
         self.convBlock1 = Conv2d(kernel_size=2, stride=2, out_channels=5, in_channels=1)
-        self.bn1 = BatchNorm2d(num_features=5)
+        #self.bn1 = BatchNorm2d(num_features=5)
 
         # Conv 3@ (1x1) stride 1 -> 6@ (2x2) stride 1 -> 9@ (4x4) stride 2
         self.convBlock2 = Sequential(                   
@@ -56,7 +56,7 @@ class InceptionModule(torch.nn.Module):
             ReLU(),
             Conv2d(kernel_size=4, stride=2, in_channels=6, out_channels=9, padding=1),
             ReLU(),
-            Dropout2d(0.1)
+            #Dropout2d(0.1)
         )
 
         self.relu = ReLU()
@@ -72,7 +72,7 @@ class InceptionModule(torch.nn.Module):
         
     def forward(self, x) -> torch.Tensor:
         x1 = self.block1(x)
-        x2 = self.relu(self.bn1(self.convBlock1(x)))
+        x2 = self.relu(self.convBlock1(x))
         x3 = self.convBlock2(x)
         print(x1.shape, x2.shape, x3.shape)
         y = torch.cat((x1, x2, x3), dim=1)
@@ -189,8 +189,8 @@ plt.figure(figsize=(12, 5))
 plt.subplot(1, 2, 1)
 plt.plot(history["train"], label="Train Loss", color="blue", lw=2)
 plt.plot(history["val"], label="Validation Loss", color="orange", lw=2)
-plt.title("Andamento della Loss")
-plt.xlabel("Epoche")
+plt.title("Loss Evolution")
+plt.xlabel("Epochs")
 plt.ylabel("Loss")
 plt.legend()
 plt.grid(True)
@@ -198,8 +198,8 @@ plt.grid(True)
 # Grafico dell'Accuratezza di Validation
 plt.subplot(1, 2, 2)
 plt.plot(history["acc"], label="Val Accuracy", color="green", lw=2)
-plt.title("Accuratezza di Validazione")
-plt.xlabel("Epoche")
+plt.title("Validation Accuracy Evolution")
+plt.xlabel("Epochs")
 plt.ylabel("Accuracy")
 plt.legend()
 plt.grid(True)
@@ -238,6 +238,6 @@ test_acc = ntest_correct / ntest
 print(f"loss: {test_loss}, accuracy: {test_acc}")
 
 
-# By using as training set the first two days on the first monitor position and the third as training set we obtain:
-# Test loss: 1.2525141948078449, accuracy: 0.5575328265376641
+#By using as training set the first two days on the first monitor position and the third as training set we obtain:
+#Test loss: 1.2525141948078449, accuracy: 0.5575328265376641
 

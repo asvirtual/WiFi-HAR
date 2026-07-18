@@ -35,12 +35,13 @@ class CFR(Dataset):
         for index in range(0, total_frames - window_size + 1, stride):
             window = matrix[index:index + window_size, :]
             windows.append(window)
+            #print(window.shape[0], window.shape[1])
         return torch.stack(windows)
 
-    def __init__(self, folder, campaigns, split_mode="train", stride=50, transform=None, max_samples=None):
+    def __init__(self, folder, campaigns, split_mode="train", stride=5, transform=None, max_samples=None):
 
-        x_list = []
-        y_list = []
+        self.matrices = []
+        self.window_info = []
 
         for campaign in campaigns:
             if not os.path.exists(f"./{folder}{campaign}"):
@@ -61,28 +62,26 @@ class CFR(Dataset):
                         continue  # Skip files that are too short
 
                     label_id = torch.tensor(self.LABEL_MAP[file.split("_")[1]]).long()
-                    windows = self.sliding_window(matrix, SAMPLE_SIZE_ROWS, stride)
-                    x_list.append(windows)
-                    labels = torch.full((windows.shape[0],), label_id, dtype=torch.long)
-                    y_list.append(labels)
+                    mat_idx = len(self.matrices)
+                    self.matrices.append(matrix)
 
-                    
-                #print(f"Loaded {file} -> extracted {windows.shape[0]} windows with label {label_id}")
-        
-        self.x = torch.cat(x_list, dim=0)
-        self.y = torch.cat(y_list, dim=0)
+                    total_frames = matrix.shape[0]
+                    for index in range(0, total_frames - SAMPLE_SIZE_ROWS + 1, stride):
+                        self.window_info.append((mat_idx, index, label_id))
 
         self.transform = transform
         self.max_samples = max_samples
 
     def __len__(self):
         if self.max_samples is None:
-            return len(self.x)
-        return min(self.max_samples, len(self.x))
+            return len(self.window_info)
+        return min(self.max_samples, len(self.window_info))
 
     def __getitem__(self, idx):
-        x = self.x[idx]
-        y = self.y[idx]
+        mat_idx, index, label_id = self.window_info[idx]
+        matrix = self.matrices[mat_idx]
+        x = matrix[index:index + SAMPLE_SIZE_ROWS, :]
+        y = label_id
         x = x.unsqueeze(0)  # Add channel dimension
         if self.transform:
             x = self.transform(x)
