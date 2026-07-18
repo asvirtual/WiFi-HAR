@@ -1,10 +1,11 @@
 import json
 import torch
 import matplotlib.pyplot as plt
-from torch.nn import Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
+from torch.nn import AdaptiveMaxPool2d, BatchNorm1d, BatchNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
 import numpy as np
 from torch.utils.data import DataLoader
 from dataset import CFR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 from tqdm import tqdm
 
@@ -13,14 +14,16 @@ class BaselineNet(torch.nn.Module):
         super().__init__()
         self.sequential=Sequential(
             InceptionModule(),
-            Conv2d(kernel_size=1,stride=1,padding=0,out_channels=3,in_channels=15),
+            Conv2d(kernel_size=3,stride=2,padding=0,out_channels=32,in_channels=15), 
+            BatchNorm2d(num_features=32, momentum=0.01),
             ReLU(),
-            #MaxPool2d(kernel_size=2, stride=2),
+            AdaptiveMaxPool2d((30,12)),
             Flatten(),
             Dropout(0.2),
-            Linear(in_features=25500, out_features=128),
+            Linear(in_features=32*30*12, out_features=128),
             ReLU(),
-            #Dropout(0.2),
+            BatchNorm1d(num_features=128, momentum=0.01),
+            Dropout(0.1),
             Linear(in_features=128,out_features=8),
         )
         self.apply(self._init_weights)
@@ -44,21 +47,27 @@ class InceptionModule(torch.nn.Module):
         self.block1 = MaxPool2d(kernel_size=2, stride=2)
         
         # Conv @5 (2x2) stride 2
-        self.convBlock1 = Conv2d(kernel_size=2, stride=2, out_channels=5, in_channels=1)
-        #self.bn1 = BatchNorm2d(num_features=5)
+        self.convBlock1 = Sequential(
+            Conv2d(kernel_size=2, stride=2, out_channels=5, in_channels=1),
+            BatchNorm2d(num_features=5),
+            ReLU()
+        )
 
         # Conv 3@ (1x1) stride 1 -> 6@ (2x2) stride 1 -> 9@ (4x4) stride 2
         self.convBlock2 = Sequential(                   
             Conv2d(kernel_size=1, stride=1, in_channels=1, out_channels=3),
+            BatchNorm2d(num_features=3),
             ReLU(),
+
             Conv2d(kernel_size=2, stride=1, in_channels=3, out_channels=6, padding='same'),
+            BatchNorm2d(num_features=6),
             ReLU(),
+
             Conv2d(kernel_size=4, stride=2, in_channels=6, out_channels=9, padding=1),
-            ReLU(),
+            BatchNorm2d(num_features=9),
+            ReLU()
             #Dropout2d(0.1)
         )
-
-        self.relu = ReLU()
         self.apply(self._init_weights)
 
         
@@ -71,9 +80,9 @@ class InceptionModule(torch.nn.Module):
         
     def forward(self, x) -> torch.Tensor:
         x1 = self.block1(x)
-        x2 = self.relu(self.convBlock1(x))
+        x2 = self.convBlock1(x)
         x3 = self.convBlock2(x)
-        print(x1.shape, x2.shape, x3.shape)
+        # print(x1.shape, x2.shape, x3.shape)
         y = torch.cat((x1, x2, x3), dim=1)
         return y
 
@@ -93,8 +102,8 @@ valid_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
                               num_workers=num_workers, pin_memory=pin_memory)
 
 
-opt = Adam(model.parameters(), lr=1e-3, weight_decay = 0)
-loss_fn = CrossEntropyLoss()
+opt = Adam(model.parameters(), lr=3e-4, weight_decay = 1e-4)
+loss_fn = CrossEntropyLoss(label_smoothing=0.1)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 
@@ -103,7 +112,7 @@ patience = 7
 counter = 0
 
 best_val = np.inf
-checkpoint_path = "baseline_model.pt"
+checkpoint_path = "baseline2_model.pt"
 
 history = {
     "train": [],
@@ -111,6 +120,7 @@ history = {
     "acc": []
 }
 
+scheduler = CosineAnnealingLR(opt, T_max=epochs, eta_min=1e-6)
 
 for epoch in range(epochs):
     # TRAINING
@@ -166,6 +176,7 @@ for epoch in range(epochs):
         history["acc"].append(val_acc)
         print(f"Validation loss: {val_loss}, accuracy: {val_acc}")
 
+    # EARLY STOPPING
     if val_loss < best_val:
         print("Saved Model")
         torch.save(model.state_dict(), checkpoint_path)
@@ -177,8 +188,11 @@ for epoch in range(epochs):
         print(f"[EARLY STOPPING] Validation loss hasn't improved for {patience} epochs.")
         break
 
+    # temporal update of the learning rate:
+    scheduler.step()
 
-history_path = "plot_data/training_history_baseline.json"
+
+history_path = "plot_data/training_history_baseline2.json"
 
 with open(history_path, "w") as f:
     json.dump(history, f, indent=4)

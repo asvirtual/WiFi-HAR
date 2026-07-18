@@ -23,4 +23,10 @@ A better idea consists in using sliding windows that every 5 columns take anothe
 after implementing the baseline model, we have obtained the following results:
 ![alt text](image.png)
 We now want to make the architecture more robust by adding some batch normalization between the layers (regularazing and reducing covariate shift maybe)
-Using some type of pooling before the flattening of the maps, the idea is to change the cor after the concatenation such that it has more filters
+Using some type of pooling before the flattening of the maps, the idea is to change the convolution layer after the concatenation such that it has more filters so the flattening is more "clean" while reducing height / width.
+
+- The Pooling layer we opted to use is the max pool since it is better than the average in the case of the spectogramm since it is more able to identify the peeks while the average risks to diluite the changements making them noisier, moreover the maxpooling offer a great invariance to translations making it suitable for our case where we slide the window between the different instances.
+
+Moreover we change the loss function to make it less sure about its own decision such that it is more capable of generalizing and less prone to overfit
+We also put some kind of L2 regularization by increasing the weight decay cause u never knoe maybe its a good idea
+The last optimization in the trainig process was to make the learning rate adaptive in a temporal way such that it is faster at the beginning and then slower when it need to find the optimum. To do so we opted to use the Cosine Annealing.
