@@ -2,5 +2,4 @@
 __pycache__/
 data/*
 .vscode/*
-baseline_model.pt
-baseline2_model.pt
+baseline*.pt

@@ -113,7 +113,7 @@ if __name__ == "__main__":
     counter = 0
 
     best_val = np.inf
-    checkpoint_path = "baseline3_model.pt"
+    checkpoint_path = "./models/baseline3_model.pt"
 
     history = {
         "train": [],
