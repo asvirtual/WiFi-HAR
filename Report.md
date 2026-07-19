@@ -25,7 +25,7 @@ after implementing the baseline model, we have obtained the following results:
 We now want to make the architecture more robust by adding some batch normalization between the layers (regularazing and reducing covariate shift maybe)
 Using some type of pooling before the flattening of the maps, the idea is to change the convolution layer after the concatenation such that it has more filters so the flattening is more "clean" while reducing height / width.
 
-- The Pooling layer we opted to use is the max pool since it is better than the average in the case of the spectogramm since it is more able to identify the peeks while the average risks to diluite the changements making them noisier, moreover the maxpooling offer a great invariance to translations making it suitable for our case where we slide the window between the different instances.
+- The Pooling layer we opted to use is the adaptive max pool since it is better than the average in the case of the spectogramm since it is more able to identify the peeks while the average risks to diluite the changements making them noisier, moreover the maxpooling offer a great invariance to translations making it suitable for our case where we slide the window between the different instances.
 
 Moreover we change the loss function to make it less sure about its own decision such that it is more capable of generalizing and less prone to overfit
 We also put some kind of L2 regularization by increasing the weight decay cause u never knoe maybe its a good idea
@@ -33,3 +33,6 @@ The last optimization in the trainig process was to make the learning rate adapt
 We obtained the following results:
 ![Updated Baseline Curves](./src/plot_data/training_curves_baseline2.png)
 Which we can see tends to overfit in a reduced way but there is still a lot of noise in it, which we would like to remove
+
+To do so we try to do two different things, change the pooling to not be adaptive but such that it just have a kernal size equal to 2 and stride = 2 so it reduce by 4 the dimension. Moreover we opted to use the InstanceNormalization instead of the BatchNormalization which basically normalize based on the value of the cells of the matrix instead of normalizing based on the value of the cells in different instances in the batch, which theoretically should make the model focus more on the content since each value in the matrix is normalized by the values in that matrix making matrices with different type of noises behave in the same way even if the user is positioned in different ways from the transmitter/receiver of signals.
+We also opted in implementing gradient clipping since we saw that in case of strange batches of data we obtain way worst performances and make the model way worst with the risk of not coming back (collapse of the model).
