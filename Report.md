@@ -21,7 +21,7 @@ A better idea consists in using sliding windows that every 5 columns take anothe
 ### Baseline Model
 
 after implementing the baseline model, we have obtained the following results:
-![alt text](image.png)
+![Baseline Curves](./src/plot_data/training_curves_baseline.png)
 We now want to make the architecture more robust by adding some batch normalization between the layers (regularazing and reducing covariate shift maybe)
 Using some type of pooling before the flattening of the maps, the idea is to change the convolution layer after the concatenation such that it has more filters so the flattening is more "clean" while reducing height / width.
 
@@ -30,3 +30,6 @@ Using some type of pooling before the flattening of the maps, the idea is to cha
 Moreover we change the loss function to make it less sure about its own decision such that it is more capable of generalizing and less prone to overfit
 We also put some kind of L2 regularization by increasing the weight decay cause u never knoe maybe its a good idea
 The last optimization in the trainig process was to make the learning rate adaptive in a temporal way such that it is faster at the beginning and then slower when it need to find the optimum. To do so we opted to use the Cosine Annealing.
+We obtained the following results:
+![Updated Baseline Curves](./src/plot_data/training_curves_baseline2.png)
+Which we can see tends to overfit in a reduced way but there is still a lot of noise in it, which we would like to remove

@@ -86,113 +86,114 @@ class InceptionModule(torch.nn.Module):
         y = torch.cat((x1, x2, x3), dim=1)
         return y
 
-model = BaselineNet()
+if __name__ == "__main__":
+    model = BaselineNet()
 
-train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train")
-val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val")
+    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train")
+    val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val")
 
-batch_size = 64
-num_workers = 0
-pin_memory = torch.cuda.is_available()
+    batch_size = 64
+    num_workers = 0
+    pin_memory = torch.cuda.is_available()
 
-train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                              num_workers=num_workers, pin_memory=pin_memory)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                                num_workers=num_workers, pin_memory=pin_memory)
 
-valid_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
-                              num_workers=num_workers, pin_memory=pin_memory)
+    valid_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
+                                num_workers=num_workers, pin_memory=pin_memory)
 
 
-opt = Adam(model.parameters(), lr=3e-4, weight_decay = 1e-4)
-loss_fn = CrossEntropyLoss(label_smoothing=0.1)
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model.to(device)
+    opt = Adam(model.parameters(), lr=3e-4, weight_decay = 1e-4)
+    loss_fn = CrossEntropyLoss(label_smoothing=0.1)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
 
-epochs = 70
-patience = 7
-counter = 0
+    epochs = 70
+    patience = 7
+    counter = 0
 
-best_val = np.inf
-checkpoint_path = "baseline2_model.pt"
+    best_val = np.inf
+    checkpoint_path = "baseline2_model.pt"
 
-history = {
-    "train": [],
-    "val": [],
-    "acc": []
-}
+    history = {
+        "train": [],
+        "val": [],
+        "acc": []
+    }
 
-scheduler = CosineAnnealingLR(opt, T_max=epochs, eta_min=1e-6)
+    scheduler = CosineAnnealingLR(opt, T_max=epochs, eta_min=1e-6)
 
-for epoch in range(epochs):
-    # TRAINING
-    model.train()
-    print(f"Epoch: {epoch+1}")
+    for epoch in range(epochs):
+        # TRAINING
+        model.train()
+        print(f"Epoch: {epoch+1}")
 
-    cumtrain_loss = 0
-    ntrain = 0
-    train_iterator = tqdm(train_dataloader)
-    for batch_x, batch_y in train_iterator:
-        batch_x = batch_x.to(device)
-        batch_y = batch_y.to(device)
-
-        y_pred = model(batch_x)
-        loss = loss_fn(y_pred, batch_y)
-
-        opt.zero_grad()
-        loss.backward()
-        opt.step()
-
-        cumtrain_loss += loss.item() * batch_x.size(0)
-        ntrain += batch_x.size(0)
-        train_iterator.set_description(f"Train loss: {loss.item():.5f}")
-
-    history["train"].append(cumtrain_loss / ntrain)
-
-    # VALIDATION
-    model.eval()
-    cumval_loss = 0
-    nval_correct = 0
-    nval = 0
-
-    with torch.no_grad():
-        val_iterator = tqdm(valid_dataloader)
-        for batch_x, batch_y in val_iterator:
+        cumtrain_loss = 0
+        ntrain = 0
+        train_iterator = tqdm(train_dataloader)
+        for batch_x, batch_y in train_iterator:
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
 
             y_pred = model(batch_x)
-            batch_loss = loss_fn(y_pred, batch_y)
+            loss = loss_fn(y_pred, batch_y)
 
-            cumval_loss += batch_loss.item() * batch_x.size(0)
-            nval += batch_x.size(0)
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
 
-            predictions = y_pred.argmax(dim=1)
-            nval_correct += (predictions == batch_y).sum().item()
+            cumtrain_loss += loss.item() * batch_x.size(0)
+            ntrain += batch_x.size(0)
+            train_iterator.set_description(f"Train loss: {loss.item():.5f}")
 
-            val_iterator.set_description(f"Validation loss: {batch_loss.item():.5f}")
+        history["train"].append(cumtrain_loss / ntrain)
 
-        val_loss = cumval_loss / nval
-        val_acc = nval_correct / nval
-        history["val"].append(val_loss)
-        history["acc"].append(val_acc)
-        print(f"Validation loss: {val_loss}, accuracy: {val_acc}")
+        # VALIDATION
+        model.eval()
+        cumval_loss = 0
+        nval_correct = 0
+        nval = 0
 
-    # EARLY STOPPING
-    if val_loss < best_val:
-        print("Saved Model")
-        torch.save(model.state_dict(), checkpoint_path)
-        best_val = val_loss
-        counter = 0
-    else:
-        counter += 1
-    if counter >= patience:
-        print(f"[EARLY STOPPING] Validation loss hasn't improved for {patience} epochs.")
-        break
+        with torch.no_grad():
+            val_iterator = tqdm(valid_dataloader)
+            for batch_x, batch_y in val_iterator:
+                batch_x = batch_x.to(device)
+                batch_y = batch_y.to(device)
 
-    # temporal update of the learning rate:
-    scheduler.step()
+                y_pred = model(batch_x)
+                batch_loss = loss_fn(y_pred, batch_y)
+
+                cumval_loss += batch_loss.item() * batch_x.size(0)
+                nval += batch_x.size(0)
+
+                predictions = y_pred.argmax(dim=1)
+                nval_correct += (predictions == batch_y).sum().item()
+
+                val_iterator.set_description(f"Validation loss: {batch_loss.item():.5f}")
+
+            val_loss = cumval_loss / nval
+            val_acc = nval_correct / nval
+            history["val"].append(val_loss)
+            history["acc"].append(val_acc)
+            print(f"Validation loss: {val_loss}, accuracy: {val_acc}")
+
+        # EARLY STOPPING
+        if val_loss < best_val:
+            print("Saved Model")
+            torch.save(model.state_dict(), checkpoint_path)
+            best_val = val_loss
+            counter = 0
+        else:
+            counter += 1
+        if counter >= patience:
+            print(f"[EARLY STOPPING] Validation loss hasn't improved for {patience} epochs.")
+            break
+
+        # temporal update of the learning rate:
+        scheduler.step()
 
 
-history_path = "plot_data/training_history_baseline2.json"
+    history_path = "plot_data/training_history_baseline2.json"
 
-with open(history_path, "w") as f:
-    json.dump(history, f, indent=4)
+    with open(history_path, "w") as f:
+        json.dump(history, f, indent=4)

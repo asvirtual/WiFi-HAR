@@ -16,6 +16,8 @@ batch_size = 64
 num_workers = 0
 pin_memory = torch.cuda.is_available()
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                               num_workers=num_workers, pin_memory=pin_memory)
 
@@ -41,13 +43,15 @@ plt.legend()
 plt.grid(True)
 
 plt.tight_layout()
-plt.savefig("training_curves.png")  # Salva il grafico come immagine sul PC
+plt.savefig("./plot_data/training_curves_baseline.png")  # Salva il grafico come immagine sul PC
 plt.show()
 
 # TESTING
 checkpoint_path = "baseline_model.pt"
 model = BaselineNet()
 model.load_state_dict(torch.load(checkpoint_path))
+
+model = model.to(device)
 model.eval()
 
 cumtest_loss = 0
@@ -58,8 +62,8 @@ loss_fn = CrossEntropyLoss()
 with torch.no_grad():
     test_iterator = tqdm(test_dataloader)
     for batch_x, batch_y in test_iterator:
-        batch_x = batch_x.to(torch.device)
-        batch_y = batch_y.to(torch.device)
+        batch_x = batch_x.to(device)
+        batch_y = batch_y.to(device)
 
         y_pred = model(batch_x)
         batch_loss = loss_fn(y_pred, batch_y)
