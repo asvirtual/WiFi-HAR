@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from torch.nn import BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
 import numpy as np
 from torch.utils.data import DataLoader
-from dataset import CFR
+from dataset import CFR, SpectogramAugmentation
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 from tqdm import tqdm
@@ -88,9 +88,9 @@ class InceptionModule(torch.nn.Module):
 
 if __name__ == "__main__":
     model = BaselineNet()
-
-    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train")
-    val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val")
+    transform = SpectogramAugmentation()
+    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=5, transform=transform)
+    val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5)
 
     batch_size = 64
     num_workers = 0
@@ -108,8 +108,8 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
-    epochs = 70
-    patience = 7
+    epochs = 50
+    patience = 10
     counter = 0
 
     best_val = np.inf

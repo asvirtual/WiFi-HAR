@@ -17,6 +17,7 @@ The data registered for each folder, day, movement and channel are composed by a
 So what we did was take each matrix composed by a couple of minutes of data and split them into smaller matrices of 340x100 so by dividing on the first dimension we obtained the required format
 But just by partition each file we would have got only a few dozens of data.\
 A better idea consists in using sliding windows that every 5 columns take another screenshot of the matrix, in this way we obtain a lot of data that are correlated with each other but have the important information in different position, making the data less prone to overfit since it has to detect the element indendently from where it is in the matrix and at the same time give us more data to train and validate the algorithm.
+We opted for a stride equal to 5 and not smaller since we found it a good tradeoff between having enough data to train and validate the model on and having some variety in the data, causer otherwise with a pooling layer the invariance would make following screenshots basically the same so it would make the network overfit on data it has already saw which is a no-sense.
 
 ### Baseline Model
 
@@ -38,3 +39,11 @@ To do so we try to do two different things, change the pooling to not be adaptiv
 We also opted in implementing gradient clipping since we saw that in case of strange batches of data we obtain way worst performances and make the model way worst with the risk of not coming back (collapse of the model).
 With this new updates indeed we obtained a way better model that is less affected by noise and way more stable:
 ![Updated Baseline Curves 2nd Version](./src/plot_data/training_curves_baseline3.png)
+
+The last thing we tried to implement on the standard convolutional architecture was to increase the number of training data by exploiting data augmentation, indeed in the case of the spectrograms we have specific techniques like the masking block
+
+- Time Masking -> set to zero values in a given row, the model has to understand the activity even in case of temporal holes in the signal
+- Frequency Masking -> set to zero values in a given column, the model has to understand the activity even in case of a specific frequency that is affected by a total interference
+
+We have also implemented the confusion matrix to have more information about what is happening in our training and which are the classes that we are better at identify and which are the ones we have more difficulties:
+![Confusion Matrices 2nd Version](./src/plot_data/confusion_matrix.png)

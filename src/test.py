@@ -1,10 +1,9 @@
 import torch, json
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-from torch.nn import CrossEntropyLoss
-from baseline import BaselineNet
+from baseline3 import BaselineNet
 from dataset import CFR
-from tqdm import tqdm
+from model_evaluation import evaluate_model
 
 history_path = "plot_data/training_history_baseline3.json"
 with open(history_path, "r") as f:
@@ -46,40 +45,12 @@ plt.tight_layout()
 plt.savefig("./plot_data/training_curves_baseline3.png")  # Salva il grafico come immagine sul PC
 plt.show()
 
+
 # TESTING
 checkpoint_path = "./models/baseline3_model.pt"
 model = BaselineNet()
 model.load_state_dict(torch.load(checkpoint_path))
 
 model = model.to(device)
-model.eval()
+results = evaluate_model(model, test_dataloader, device, test_dataset.LABEL_MAP, save_dir="./plot_data")
 
-cumtest_loss = 0
-ntest_correct = 0
-ntest = 0
-loss_fn = CrossEntropyLoss()
-
-with torch.no_grad():
-    test_iterator = tqdm(test_dataloader)
-    for batch_x, batch_y in test_iterator:
-        batch_x = batch_x.to(device)
-        batch_y = batch_y.to(device)
-
-        y_pred = model(batch_x)
-        batch_loss = loss_fn(y_pred, batch_y)
-
-        cumtest_loss += batch_loss.item() * batch_x.size(0)
-        ntest += batch_x.size(0)
-
-        predictions = y_pred.argmax(dim=1)
-        ntest_correct += (predictions == batch_y).sum().item()
-
-        test_iterator.set_description(f"Test loss: {batch_loss.item():.5f}")
-
-test_loss = cumtest_loss / ntest
-test_acc = ntest_correct / ntest
-print(f"loss: {test_loss}, accuracy: {test_acc}")
-
-
-#By using as training set the first two days on the first monitor position and the third as training set we obtain:
-#Test loss: 1.2525141948078449, accuracy: 0.5575328265376641

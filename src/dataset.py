@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch import long
 import pickle
 import numpy as np
-import os
+import os, random
 
 '''
 Folder/file naming and structure
@@ -15,6 +15,29 @@ Folder/file naming and structure
 
 SAMPLE_SIZE_ROWS = 340
 SAMPLE_SIZE_COLS = 100
+
+class SpectogramAugmentation:
+    def __init__(self, tprob=0.5, fprob=0.5, max_tmask=40, max_fmask=5):
+        self.tprob = tprob
+        self.fprob = fprob
+        self.max_tmask = max_tmask
+        self.max_fmask = max_fmask
+
+    def __call__(self, x):
+        h,w = x.shape[1], x.shape[2] # height and width of the spectrogram
+        # Time Masking:
+        if random.random() < self.tprob:
+            t_range = random.randint(5, self.max_tmask)
+            t0 = random.randint(0, h - t_range)
+            x[:, t0:t0+t_range, :] = 0.0
+        # Frequency Masking:
+        if random.random() < self.fprob:
+            f_range = random.randint(2, self.max_fmask)
+            f0 = random.randint(0, w - f_range)
+            x[:, :, f0:f0+f_range] = 0.0
+        return x
+
+
 
 class CFR(Dataset):
     LABEL_MAP = {
@@ -29,19 +52,20 @@ class CFR(Dataset):
         "W": 7,
     }
 
-    def sliding_window(self, matrix, window_size, stride):
-        total_frames, pack = matrix.shape
-        windows = []
-        for index in range(0, total_frames - window_size + 1, stride):
-            window = matrix[index:index + window_size, :]
-            windows.append(window)
-            #print(window.shape[0], window.shape[1])
-        return torch.stack(windows)
+    # def sliding_window(self, matrix, window_size, stride):
+    #     total_frames, pack = matrix.shape
+    #     windows = []
+    #     for index in range(0, total_frames - window_size + 1, stride):
+    #         window = matrix[index:index + window_size, :]
+    #         windows.append(window)
+    #         #print(window.shape[0], window.shape[1])
+    #     return torch.stack(windows)
 
     def __init__(self, folder, campaigns, split_mode="train", stride=5, transform=None, max_samples=None):
 
         self.matrices = []
         self.window_info = []
+        self.split_mode = split_mode
 
         for campaign in campaigns:
             if not os.path.exists(f"./{folder}{campaign}"):
@@ -80,8 +104,9 @@ class CFR(Dataset):
     def __getitem__(self, idx):
         mat_idx, index, label_id = self.window_info[idx]
         matrix = self.matrices[mat_idx]
-        x = matrix[index:index + SAMPLE_SIZE_ROWS, :]
+        x = matrix[index:index + SAMPLE_SIZE_ROWS, :].clone() # create a copy such that we don't modify the original matrix when applying transforms
         y = label_id
+
         x = x.unsqueeze(0)  # Add channel dimension
         if self.transform:
             x = self.transform(x)
