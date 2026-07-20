@@ -1,7 +1,7 @@
 import json
 import torch
 import matplotlib.pyplot as plt
-from torch.nn import BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
+from torch.nn import LSTM, BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
 import numpy as np
 from torch.utils.data import DataLoader
 from dataset import CFR, SpectogramAugmentation
@@ -9,18 +9,22 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 from tqdm import tqdm
 
-class BaselineNet(torch.nn.Module):
+class ConvolutionalRecurrentNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.sequential=Sequential(
+        self.cnn  = Sequential(
             InceptionModule(),
             Conv2d(kernel_size=4,stride=2,padding=0,out_channels=32,in_channels=15),  # 32, 84, 24
             InstanceNorm2d(num_features=32, affine=True), 
             ReLU(),
             MaxPool2d(kernel_size=2, stride=2), # 32, 42, 12
-            Flatten(), 
+        )
+        # we will treat the 42 time steps as a sequence, and each time step has 32*12 features (number of filter * number of frequency bins)
+        self.lstm = LSTM(input_size=32*12, hidden_size=64, num_layers=2, dropout=0.2, batch_first=True, bidirectional=True) 
+        # for each of the temporal steps, we output a vector of size 128
+        self.classificator=Sequential(
             Dropout(0.2),
-            Linear(in_features=32*42*12, out_features=128),
+            Linear(in_features=128, out_features=128), # head projection that maps the 128 features from the LSTM (bidirectional) to 128 features that merge those informations
             ReLU(),
             BatchNorm1d(num_features=128, momentum=0.01),
             Dropout(0.1),
@@ -37,7 +41,16 @@ class BaselineNet(torch.nn.Module):
 
     
     def forward(self,x) -> torch.Tensor:
-        return self.sequential(x)
+        # convolutional network
+        x = self.cnn(x)
+        # we reshape the output of the CNN to be suitable for the LSTM: (batch_size, time_steps, channels * features)
+        x = x.permute(0, 2, 1, 3)
+        batch_size, time_steps, channels, features = x.size()
+        x = x.reshape(batch_size, time_steps, channels * features)
+        # recurrent layer
+        x  = self.lstm(x)[0] # we only take the output of the last layer of the LSTM
+        x = torch.mean(x, dim=1) # we average the output of the LSTM over the time dimensiom
+        return self.classificator(x)
 
 
 class InceptionModule(torch.nn.Module):
@@ -87,7 +100,7 @@ class InceptionModule(torch.nn.Module):
         return y
 
 if __name__ == "__main__":
-    model = BaselineNet()
+    model = ConvolutionalRecurrentNet()
     transform = SpectogramAugmentation()
     train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=5, transform=transform)
     val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5)
@@ -108,12 +121,12 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
-    epochs = 50
-    patience = 10
+    epochs = 60
+    patience = 12
     counter = 0
 
     best_val = np.inf
-    checkpoint_path = "./models/baseline3_model.pt"
+    checkpoint_path = "./models/recurrent_model.pt"
 
     history = {
         "train": [],
@@ -195,7 +208,7 @@ if __name__ == "__main__":
         scheduler.step()
 
 
-    history_path = "plot_data/training_history_baseline3.json"
+    history_path = "plot_data/training_history_recurrent.json"
 
     with open(history_path, "w") as f:
         json.dump(history, f, indent=4)

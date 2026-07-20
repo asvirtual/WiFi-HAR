@@ -104,10 +104,11 @@ class CFR(Dataset):
     def __getitem__(self, idx):
         mat_idx, index, label_id = self.window_info[idx]
         matrix = self.matrices[mat_idx]
+        # shape of the input: Time x Frequency (340x100)
         x = matrix[index:index + SAMPLE_SIZE_ROWS, :].clone() # create a copy such that we don't modify the original matrix when applying transforms
         y = label_id
 
-        x = x.unsqueeze(0)  # Add channel dimension
+        x = x.unsqueeze(0)  # Add channel dimension, now we have shape: 1 x Time x Frequency (1x340x100)
         if self.transform:
             x = self.transform(x)
         return x, y 

@@ -46,4 +46,19 @@ The last thing we tried to implement on the standard convolutional architecture 
 - Frequency Masking -> set to zero values in a given column, the model has to understand the activity even in case of a specific frequency that is affected by a total interference
 
 We have also implemented the confusion matrix to have more information about what is happening in our training and which are the classes that we are better at identify and which are the ones we have more difficulties:
-![Confusion Matrices 2nd Version](./src/plot_data/confusion_matrix.png)
+![Confusion Matrices 2nd Version](./src/plot_data/confusion_matrix_baseline.png)
+What we can notice is that some classes seems more difficult to predict than others:
+
+- the network confuse L for E, meanwhile is very sure when it comes to predict E , seems like prediliges E between the two when it is undecided, probably given by the fact that the samples with E activities are more numerous than the ones with E, but still E has a decent amount of samples. If E represents the absence of movements, then L should be an activity with a very low energy and the network looking at the low energy in the doppler spectrogramm opts the safest way where there are more samples
+- Jump Run and Walk are quite similiar to each other given the fact that they are big movements, especially jump have a low accuracy since it is often confused for walking
+- H and C are quite interchangable since they are both the only other class that the model confuse the other with, so they could have a very similiar spectral firm
+- S is confused for almost every class that requires a quite low amount of energy (so all other than jump, walk and run)
+
+Our hypothesis is that the problem resides in the fact that the convolutional network is not able to classify correctly activities of similiar level of energy since they miss part of the temporal information and by the fact that movements at low energy levels could be confused by some background noise
+
+So what we want to do now is to try to implement some kind of recurrency in the network such that we can extrapolate more information from each matrix.\
+The idea is to put some kind of recurrent network after the inception layer, in this way we make the convolution filters extrapolate the useful patterns and then we pass those patterns in input to the recurrent layer that learn the evolution of the action in time such that we have more information to base our prediction on.\
+Initially we implemented a bidirectional LSTM layer where we basically take in input the output of the convolutional network and indicate the temporal dimension as the one we want to use to extract the recurrence and unify the filter and frequencies dimensions as the other dimension that we want to extrapolate informations on. Indeed istead of flattening all dimensions together, we preserve the time dimension as a sequence.\
+The bidirectional processing let the model leverage all the temporal context in both direction which is useful since we have the hole spectogramm to compute at the beginning and give us more informations. The output of the LSTM is averaged across the time dimension to obtain a single global representation to pass to the head projection used to merge the informations of the 2 directions together:
+![Updated Baseline Curves 2nd Version](./src/plot_data/training_curves_recurrent.png)
+![Confusion Matrices 2nd Version](./src/plot_data/confusion_matrix_recurrent.png)

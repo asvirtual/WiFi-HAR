@@ -1,11 +1,11 @@
 import torch, json
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-from baseline3 import BaselineNet
+from recurrent import ConvolutionalRecurrentNet
 from dataset import CFR
 from model_evaluation import evaluate_model
 
-history_path = "plot_data/training_history_baseline3.json"
+history_path = "plot_data/training_history_recurrent.json"
 with open(history_path, "r") as f:
     history = json.load(f)
 
@@ -42,13 +42,13 @@ plt.legend()
 plt.grid(True)
 
 plt.tight_layout()
-plt.savefig("./plot_data/training_curves_baseline3.png")  # Salva il grafico come immagine sul PC
+plt.savefig("./plot_data/training_curves_recurrent.png")  # Salva il grafico come immagine sul PC
 plt.show()
 
 
 # TESTING
-checkpoint_path = "./models/baseline3_model.pt"
-model = BaselineNet()
+checkpoint_path = "./models/recurrent_model.pt"
+model = ConvolutionalRecurrentNet()
 model.load_state_dict(torch.load(checkpoint_path))
 
 model = model.to(device)
