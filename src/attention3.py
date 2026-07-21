@@ -21,7 +21,7 @@ class ConvolutionalRecurrentNet(torch.nn.Module):
         )
         # we will treat the 42 time steps as a sequence, and each time step has 32*12 features (number of filter * number of frequency bins)
         # now we have double the parameters since we also want to deal with the derivative of the values in following time instances
-        self.lstm = LSTM(input_size=32*12, hidden_size=64, num_layers=2, dropout=0.2, batch_first=True, bidirectional=True) 
+        self.lstm = LSTM(input_size=32*12*2, hidden_size=64, num_layers=2, dropout=0.2, batch_first=True, bidirectional=True) 
         self.attention = SelfAttention(in_features=128, attention_dim=64)
 
         self.classificator=Sequential(
@@ -51,9 +51,9 @@ class ConvolutionalRecurrentNet(torch.nn.Module):
         x = x.reshape(batch_size, time_steps, channels * features)
 
         # compute the derivative to pass to the lstm together with the output maps of the cnn
-        # delta_x = torch.zeros_like(x)
-        # delta_x[:, 1:, :] = x[:, 1:, :] - x[:, :-1, :] # S_t - S_{t-1}
-        # x = torch.cat((x,delta_x), dim=-1)
+        delta_x = torch.zeros_like(x)
+        delta_x[:, 1:, :] = x[:, 1:, :] - x[:, :-1, :] # S_t - S_{t-1}
+        x = torch.cat((x,delta_x), dim=-1)
         # recurrent layer
         x  = self.lstm(x)[0] # we only take the output of the last layer of the LSTM
 
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     counter = 0
 
     best_val = np.inf
-    checkpoint_path = "./models/attention2_model.pt"
+    checkpoint_path = "./models/attention3_model.pt"
 
     history = {
         "train": [],
@@ -214,20 +214,8 @@ if __name__ == "__main__":
                 batch_y = batch_y.to(device)
 
                 y_pred = model(batch_x)
-
-
-                logits = y_pred.view(size, 4, -1)
-                probs = torch.softmax(logits, dim=-1)
-                # Shannon Entropy
-                eps = 1e-8
-                entropy = -torch.sum(probs * torch.log(probs + eps), dim=-1)  # (size, 4)
-                # convert the entropy into weights that are affected by a temperature
-                temperature = 1.0
-                weights = torch.softmax(-entropy / temperature, dim=1).unsqueeze(-1)  # (size, 4, 1)
-
-                y_pred_grouped = torch.log(torch.sum(probs * weights, dim=1)+eps)  # take the log of the weighted average probability of the 4 channels
+                y_pred_grouped = y_pred.view(size, 4, -1).mean(dim=1) # we average the predictions of the 4 windows to get a single prediction for each sample
                 batch_loss = loss_fn(y_pred_grouped, batch_y)
-
                 cumval_loss += batch_loss.item() * size
                 nval += size
 
@@ -263,9 +251,7 @@ if __name__ == "__main__":
         scheduler.step()
 
 
-    history_path = "plot_data/training_history_attention2.json"
+    history_path = "plot_data/training_history_attention3.json"
 
     with open(history_path, "w") as f:
         json.dump(history, f, indent=4)
-
-

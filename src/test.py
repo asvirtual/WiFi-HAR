@@ -3,15 +3,15 @@ import torch, json
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-from recurrent3 import ConvolutionalRecurrentNet
+from attention2 import ConvolutionalRecurrentNet
 from dataset2 import CFR
 from model_evaluation2 import evaluate_model
 
-history_path = "plot_data/training_history_recurrent3.json"
+history_path = "plot_data/training_history_attention2.json"
 with open(history_path, "r") as f:
     history = json.load(f)
 
-checkpoint_path = "./models/recurrent3.pt"
+checkpoint_path = "./models/attention2_model.pt"
 checkpoint = torch.load(checkpoint_path)
 
 if 'train_mean' in checkpoint and 'train_std' in checkpoint:
@@ -52,7 +52,7 @@ plt.legend()
 plt.grid(True)
 
 plt.tight_layout()
-plt.savefig("./plot_data/training_curves_recurrent3.png")  # Salva il grafico come immagine sul PC
+plt.savefig("./plot_data/training_curves_attention2.png")  # Salva il grafico come immagine sul PC
 plt.show()
 
 

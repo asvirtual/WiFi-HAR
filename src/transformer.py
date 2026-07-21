@@ -1,7 +1,7 @@
 import json
 import torch
 import matplotlib.pyplot as plt
-from torch.nn import LSTM, BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss, Tanh
+from torch.nn import LSTM, BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss, Tanh, Parameter, TransformerEncoderLayer, TransformerEncoder
 import numpy as np
 from torch.utils.data import DataLoader
 from dataset2 import CFR, SpectogramAugmentation
@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 from tqdm import tqdm
 
-class ConvolutionalRecurrentNet(torch.nn.Module):
+class ConvolutionalTransformerNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.cnn  = Sequential(
@@ -19,14 +19,14 @@ class ConvolutionalRecurrentNet(torch.nn.Module):
             ReLU(),
             MaxPool2d(kernel_size=2, stride=2), # 32, 42, 12
         )
-        # we will treat the 42 time steps as a sequence, and each time step has 32*12 features (number of filter * number of frequency bins)
-        # now we have double the parameters since we also want to deal with the derivative of the values in following time instances
-        self.lstm = LSTM(input_size=32*12, hidden_size=64, num_layers=2, dropout=0.2, batch_first=True, bidirectional=True) 
-        self.attention = SelfAttention(in_features=128, attention_dim=64)
+
+        self.pos_embedding = Parameter(torch.randn(1,42,384)*0.01)
+        encoder_layer = TransformerEncoderLayer(d_model=32*12, nhead=4, dim_feedforward=512, dropout=0.2)
+        self.transformer = TransformerEncoder(encoder_layer, num_layers=2)
 
         self.classificator=Sequential(
             Dropout(0.2),
-            Linear(in_features=256, out_features=128), # head projection that maps features from the LSTM (bidirectional) to 128 features that merge those informations (we have 256 since we also keep the standar deviation)
+            Linear(in_features=384*2, out_features=128), # head projection that maps features from the LSTM (bidirectional) to 128 features that merge those informations (we have 256 since we also keep the standar deviation)
             ReLU(),
             BatchNorm1d(num_features=128, momentum=0.01),
             Dropout(0.2),
@@ -49,18 +49,13 @@ class ConvolutionalRecurrentNet(torch.nn.Module):
         x = x.permute(0, 2, 1, 3)
         batch_size, time_steps, channels, features = x.size()
         x = x.reshape(batch_size, time_steps, channels * features)
-
-        # compute the derivative to pass to the lstm together with the output maps of the cnn
-        # delta_x = torch.zeros_like(x)
-        # delta_x[:, 1:, :] = x[:, 1:, :] - x[:, :-1, :] # S_t - S_{t-1}
-        # x = torch.cat((x,delta_x), dim=-1)
         # recurrent layer
-        x  = self.lstm(x)[0] # we only take the output of the last layer of the LSTM
+        x  = x + self.pos_embedding
+        x = self.transformer(x)
 
-        context, attention_weights = self.attention(x) # we apply the self-attention mechanism to get a context vector of size 128
-        std = torch.std(x, dim=1, unbiased=False) # we take the std over the time dimension
-        self.latest_attention_weights = attention_weights
-        x = torch.cat((context,std), dim=-1) # we concatenate the mean, max and std to get a vector of size 128*3=384
+        mean = x.mean(dim=1)
+        std = torch.std(x, dim=1, unbiased=False)
+        x = torch.cat((mean, std), dim=-1)
         return self.classificator(x)
 
 
@@ -137,7 +132,7 @@ class SelfAttention(torch.nn.Module):
 
 
 if __name__ == "__main__":
-    model = ConvolutionalRecurrentNet()
+    model = ConvolutionalTransformerNet()
     transform = SpectogramAugmentation()
     train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=25, transform=transform)
     val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5)
@@ -163,7 +158,7 @@ if __name__ == "__main__":
     counter = 0
 
     best_val = np.inf
-    checkpoint_path = "./models/attention2_model.pt"
+    checkpoint_path = "./models/transformer_model.pt"
 
     history = {
         "train": [],
@@ -214,18 +209,7 @@ if __name__ == "__main__":
                 batch_y = batch_y.to(device)
 
                 y_pred = model(batch_x)
-
-
-                logits = y_pred.view(size, 4, -1)
-                probs = torch.softmax(logits, dim=-1)
-                # Shannon Entropy
-                eps = 1e-8
-                entropy = -torch.sum(probs * torch.log(probs + eps), dim=-1)  # (size, 4)
-                # convert the entropy into weights that are affected by a temperature
-                temperature = 1.0
-                weights = torch.softmax(-entropy / temperature, dim=1).unsqueeze(-1)  # (size, 4, 1)
-
-                y_pred_grouped = torch.log(torch.sum(probs * weights, dim=1)+eps)  # take the log of the weighted average probability of the 4 channels
+                y_pred_grouped = y_pred.view(size, 4, -1).mean(dim=1) # we average the predictions of the 4 windows to get a single prediction for each sample
                 batch_loss = loss_fn(y_pred_grouped, batch_y)
 
                 cumval_loss += batch_loss.item() * size
@@ -263,9 +247,7 @@ if __name__ == "__main__":
         scheduler.step()
 
 
-    history_path = "plot_data/training_history_attention2.json"
+    history_path = "plot_data/training_history_transformer.json"
 
     with open(history_path, "w") as f:
         json.dump(history, f, indent=4)
-
-
