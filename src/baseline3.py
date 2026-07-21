@@ -182,7 +182,12 @@ if __name__ == "__main__":
         # EARLY STOPPING
         if val_loss < best_val:
             print("Saved Model")
-            torch.save(model.state_dict(), checkpoint_path)
+            checkpoint = {
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'loss': val_loss
+            }
+            torch.save(checkpoint, checkpoint_path)
             best_val = val_loss
             counter = 0
         else:

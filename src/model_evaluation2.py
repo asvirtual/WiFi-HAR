@@ -21,16 +21,18 @@ def evaluate_model(model, test_loader, device, label_map, save_dir="./plot_data"
     class_names = ["-".join(id_to_label[i]) for i in range(len(id_to_label))]
 
     with torch.no_grad():
-        for x_batch, y_batch in test_loader:
+        for batch_x, batch_y in test_loader:
+            size = batch_x.size(0)
+            batch_x = batch_x.view(-1,1,340,100).to(device)
+            batch_y = batch_y.to(device)
             
-            x_batch = x_batch.to(device)
-            y_batch = y_batch.to(device)
+            y_pred = model(batch_x)
+            y_pred_grouped = y_pred.view(size, 4, -1).mean(dim=1) # we average the predictions of the 4 windows to get a single prediction for each sample
+
+            predictions = y_pred_grouped.argmax(dim=1)
             
-            outputs = model(x_batch)
-            preds = torch.argmax(outputs, dim=1)
-            
-            all_preds.extend(preds.cpu().numpy())
-            all_targets.extend(y_batch.cpu().numpy())
+            all_preds.extend(predictions.cpu().numpy())
+            all_targets.extend(batch_y.cpu().numpy())
 
     all_preds = np.array(all_preds)
     all_targets = np.array(all_targets)
@@ -63,7 +65,7 @@ def evaluate_model(model, test_loader, device, label_map, save_dir="./plot_data"
     axes[1].tick_params(axis='x', rotation=45)
 
     plt.tight_layout()
-    cm_path = os.path.join(save_dir, "confusion_matrix_recurrent3.png")
+    cm_path = os.path.join(save_dir, "confusion_matrix_recurrent4.png")
     plt.savefig(cm_path, dpi=300)
     plt.close()
     

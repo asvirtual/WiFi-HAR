@@ -34,8 +34,17 @@ class SpectogramAugmentation:
         if random.random() < self.fprob:
             f_range = random.randint(2, self.max_fmask)
             f0 = random.randint(0, w - f_range)
-            x[:, :, f0:f0+f_range] = 0.0
+            #x[:, :, f0:f0+f_range] = 0.0
         return x
+
+class Normalize:
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        # Normalizza: (x - mean) / std
+        return (tensor - self.mean) / self.std
 
 
 
