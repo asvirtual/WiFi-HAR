@@ -1,29 +1,34 @@
 import json
 import torch
 import matplotlib.pyplot as plt
-from torch.nn import BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
+from torch.nn import LSTM, BatchNorm1d, BatchNorm2d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
+from torchvision.transforms import Compose
 import numpy as np
 from torch.utils.data import DataLoader
-from dataset import CFR, SpectogramAugmentation
+from dataset2 import CFR, SpectogramAugmentation, Normalize
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 from tqdm import tqdm
 
-class BaselineNet(torch.nn.Module):
+class ConvolutionalRecurrentNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.sequential=Sequential(
+        self.cnn  = Sequential(
             InceptionModule(),
             Conv2d(kernel_size=4,stride=2,padding=0,out_channels=32,in_channels=15),  # 32, 84, 24
-            InstanceNorm2d(num_features=32, affine=True), 
+            BatchNorm2d(num_features=32), 
             ReLU(),
             MaxPool2d(kernel_size=2, stride=2), # 32, 42, 12
-            Flatten(), 
+        )
+        # we will treat the 42 time steps as a sequence, and each time step has 32*12 features (number of filter * number of frequency bins)
+        self.lstm = LSTM(input_size=32*12, hidden_size=64, num_layers=2, dropout=0.2, batch_first=True, bidirectional=True) 
+        # for each of the temporal steps, we output a vector of size 128
+        self.classificator=Sequential(
             Dropout(0.2),
-            Linear(in_features=32*42*12, out_features=128),
+            Linear(in_features=384, out_features=128), # head projection that maps the 128 features from the LSTM (bidirectional) to 128 features that merge those informations
             ReLU(),
             BatchNorm1d(num_features=128, momentum=0.01),
-            Dropout(0.1),
+            Dropout(0.2),
             Linear(in_features=128,out_features=8),
         )
         self.apply(self._init_weights)
@@ -37,7 +42,21 @@ class BaselineNet(torch.nn.Module):
 
     
     def forward(self,x) -> torch.Tensor:
-        return self.sequential(x)
+        # convolutional network
+        x = self.cnn(x)
+        # we reshape the output of the CNN to be suitable for the LSTM: (batch_size, time_steps, channels * features)
+        x = x.permute(0, 2, 1, 3)
+        batch_size, time_steps, channels, features = x.size()
+        x = x.reshape(batch_size, time_steps, channels * features)
+        # recurrent layer
+        x  = self.lstm(x)[0] # we only take the output of the last layer of the LSTM
+
+        mean = torch.mean(x, dim=1) # we average the output of the LSTM over the time dimensiom
+        max = torch.max(x, dim=1).values # we take the max over the time dimension
+        std = torch.std(x, dim=1, unbiased=False) # we take the std over the time dimension
+
+        x = torch.cat((mean, max, std), dim=-1) # we concatenate the mean, max and std to get a vector of size 128*3=384
+        return self.classificator(x)
 
 
 class InceptionModule(torch.nn.Module):
@@ -49,22 +68,22 @@ class InceptionModule(torch.nn.Module):
         # Conv @5 (2x2) stride 2
         self.convBlock1 = Sequential(
             Conv2d(kernel_size=2, stride=2, out_channels=5, in_channels=1),
-            InstanceNorm2d(num_features=5, affine=True),
+            BatchNorm2d(num_features=5),
             ReLU()
         )
 
         # Conv 3@ (1x1) stride 1 -> 6@ (2x2) stride 1 -> 9@ (4x4) stride 2
         self.convBlock2 = Sequential(                   
             Conv2d(kernel_size=1, stride=1, in_channels=1, out_channels=3),
-            InstanceNorm2d(num_features=3, affine=True),
+            BatchNorm2d(num_features=3),
             ReLU(),
 
             Conv2d(kernel_size=2, stride=1, in_channels=3, out_channels=6, padding='same'),
-            InstanceNorm2d(num_features=6, affine=True),
+            BatchNorm2d(num_features=6),
             ReLU(),
 
             Conv2d(kernel_size=4, stride=2, in_channels=6, out_channels=9, padding=1),
-            InstanceNorm2d(num_features=9, affine=True),
+            BatchNorm2d(num_features=9),
             ReLU()
             #Dropout2d(0.1)
         )
@@ -86,13 +105,38 @@ class InceptionModule(torch.nn.Module):
         y = torch.cat((x1, x2, x3), dim=1)
         return y
 
+def z_score(dataset):
+    loader = DataLoader(dataset, batch_size=64, shuffle=False)
+    total_sum = 0.0
+    total_sq_sum = 0.0
+    total_pixels = 0
+
+    for x, _ in loader:
+        x = x.float()
+        total_sum += x.sum().item()
+        total_sq_sum += (x ** 2).sum().item()
+        total_pixels += x.numel()
+
+    mean_global = total_sum / total_pixels
+    var_global = (total_sq_sum / total_pixels) - (mean_global ** 2)
+    std_global = (var_global ** 0.5) + 1e-8
+    
+    return mean_global, std_global
+
+
 if __name__ == "__main__":
-    model = BaselineNet()
-    transform = SpectogramAugmentation()
-    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=5, transform=transform)
+    model = ConvolutionalRecurrentNet()
+    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=25, transform=SpectogramAugmentation())
     val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5)
 
-    batch_size = 64
+    mean, std = z_score(train_dataset)
+    train_transform = Compose([SpectogramAugmentation(), Normalize(mean, std)])
+    val_transform = Normalize(mean, std)
+
+    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=25, transform=train_transform)
+    val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5, transform=val_transform)
+
+    batch_size = 32
     num_workers = 0
     pin_memory = torch.cuda.is_available()
 
@@ -103,17 +147,17 @@ if __name__ == "__main__":
                                 num_workers=num_workers, pin_memory=pin_memory)
 
 
-    opt = Adam(model.parameters(), lr=3e-4, weight_decay = 1e-4)
+    opt = Adam(model.parameters(), lr=1.5e-4, weight_decay = 3e-4)
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
-    epochs = 50
-    patience = 10
+    epochs = 100
+    patience = 15
     counter = 0
 
     best_val = np.inf
-    checkpoint_path = "./models/baseline3_model.pt"
+    checkpoint_path = "./models/recurrent4_model.pt"
 
     history = {
         "train": [],
@@ -132,11 +176,13 @@ if __name__ == "__main__":
         ntrain = 0
         train_iterator = tqdm(train_dataloader)
         for batch_x, batch_y in train_iterator:
-            batch_x = batch_x.to(device)
+            size = batch_x.size(0)
+            batch_x = batch_x.view(-1,1,340,100).to(device)
             batch_y = batch_y.to(device)
 
             y_pred = model(batch_x)
-            loss = loss_fn(y_pred, batch_y)
+            y_pred_grouped = y_pred.view(size, 4, -1).mean(dim=1)
+            loss = loss_fn(y_pred_grouped, batch_y)
 
             opt.zero_grad()
             loss.backward()
@@ -159,16 +205,18 @@ if __name__ == "__main__":
         with torch.no_grad():
             val_iterator = tqdm(valid_dataloader)
             for batch_x, batch_y in val_iterator:
-                batch_x = batch_x.to(device)
+                size = batch_x.size(0)
+                batch_x = batch_x.view(-1,1,340,100).to(device)
                 batch_y = batch_y.to(device)
 
                 y_pred = model(batch_x)
-                batch_loss = loss_fn(y_pred, batch_y)
+                y_pred_grouped = y_pred.view(size, 4, -1).mean(dim=1) # we average the predictions of the 4 windows to get a single prediction for each sample
+                batch_loss = loss_fn(y_pred_grouped, batch_y)
 
-                cumval_loss += batch_loss.item() * batch_x.size(0)
-                nval += batch_x.size(0)
+                cumval_loss += batch_loss.item() * size
+                nval += size
 
-                predictions = y_pred.argmax(dim=1)
+                predictions = y_pred_grouped.argmax(dim=1)
                 nval_correct += (predictions == batch_y).sum().item()
 
                 val_iterator.set_description(f"Validation loss: {batch_loss.item():.5f}")
@@ -185,7 +233,9 @@ if __name__ == "__main__":
             checkpoint = {
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
-                'loss': val_loss
+                'loss': val_loss,
+                'train_mean': mean,
+                'train_std': std
             }
             torch.save(checkpoint, checkpoint_path)
             best_val = val_loss
@@ -200,7 +250,7 @@ if __name__ == "__main__":
         scheduler.step()
 
 
-    history_path = "plot_data/training_history_baseline3.json"
+    history_path = "plot_data/training_history_recurrent4.json"
 
     with open(history_path, "w") as f:
         json.dump(history, f, indent=4)

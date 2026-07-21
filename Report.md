@@ -60,5 +60,51 @@ So what we want to do now is to try to implement some kind of recurrency in the 
 The idea is to put some kind of recurrent network after the inception layer, in this way we make the convolution filters extrapolate the useful patterns and then we pass those patterns in input to the recurrent layer that learn the evolution of the action in time such that we have more information to base our prediction on.\
 Initially we implemented a bidirectional LSTM layer where we basically take in input the output of the convolutional network and indicate the temporal dimension as the one we want to use to extract the recurrence and unify the filter and frequencies dimensions as the other dimension that we want to extrapolate informations on. Indeed istead of flattening all dimensions together, we preserve the time dimension as a sequence.\
 The bidirectional processing let the model leverage all the temporal context in both direction which is useful since we have the hole spectogramm to compute at the beginning and give us more informations. The output of the LSTM is averaged across the time dimension to obtain a single global representation to pass to the head projection used to merge the informations of the 2 directions together:
-![Updated Baseline Curves 2nd Version](./src/plot_data/training_curves_recurrent.png)
-![Confusion Matrices 2nd Version](./src/plot_data/confusion_matrix_recurrent.png)
+![Recurrent Curves Version](./src/plot_data/training_curves_recurrent.png)
+![Confusion Matrices Rec Version](./src/plot_data/confusion_matrix_recurrent.png)
+
+Looking at this model we can have mixed feelings, indeed we can notice that we obtain a significative improvement in the trainig indeed the model was increasingly improving in the training loss, the problem however resides in the validation loss, which suggests us that we are quite overfitting, so the next step is to try and reduce this problem as much as possible.
+The first step we opted to adopt is to increase the stride of the sliding window in the training set, indeed using a recurrent network, having too similiar matrices can only make the model overfit on those that he sees more frequently. So we will use stride = 25 on the training while keeping the one of 5 for the validation / test since we want to have results that are less affected by randomness as possible
+The second technique we decided to adopt is to make the output of the LSTM not only focus on the mean of the different instances of time, but also the max and variance, in this way we have a better understanding of the distribution which could help us to distinguish the cases like the ones between lie down and empty
+we also tried to add minor regularization like increasing weight decay and dropout in the head projection.
+This are the results:
+![Recurrent Curves Version2](./src/plot_data/training_curves_recurrent2.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_recurrent2.png)
+Which we can say that are great since we reduce the overfit given by the fact that the validation loss decrease for 50 epoches instead thatn after 5 ephochs it already start overfit too much which is a good result, moreover the model seems more stable and we can notice an improvement of the performances in those class we where more concerned of.
+
+But still the results are quite poor so we opted to change the approach on how we read the data for the training and make the predictions. Indeed we have 4 different channels for each room/activity/day monitored, and until now we just took those 4 different instances as independent instances to train the model on, the problem on this are 2: no assumption of iid (which is also already affected by the sliding windows but in this case those are extactly the same movement monitored at the same time), and we dont leverage the fact that we have multiple information on a given instance, which is quite a pity. The idea is to now use the channel fusion and see if it actually fix our problems of accuracy. So what we basically do is to take a kind of majority vote between the different channels on the given action on the same given moment and take that as predicted label.\
+To do so we have lowered the dimension of the batch otherwise the epochs would have a very low cardinality and implemented a new dataset that put in a list all the matrices that register the same thing but with different channels such that we have all of them in the same batch all the times, we have also increase the number of epochs of train since we have less instances in each epoch (indeed if before we have 4 times the instances, know we group those as one instance to make the prediction): LATE FUSION.
+The following are the results of the obtained model:
+![Recurrent Curves Version2](./src/plot_data/training_curves_recurrent3.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_recurrent3.png)
+We can notice that with this correction the model performs way better than before, the problems given by the lie down activity and the jump activity are way less and we have a more precise model that doesn't overfit at all since the validation loss is a random walk around the training loss, maybe one thing we could improve is to reduce the variability, but since now we have moved to a lower number of batches due to the fact that we need 4 instances to classify a given moment it is quite normal.
+
+Another thing we wanted to try is to now remove the instance normalization since it kind of make the filters treat in the same way matrices with different energies since we normalize the matrix and maybe now that we have implemented recurrency if elements are more distinct it could actually benefit the model
+To solve this without regressing on training stability, we transitioned from Instance Normalization to Global Z-Score / BatchNorm, preserving cross-sample energy relationships. The following are the results of this refinement:
+![Recurrent Curves Version2](./src/plot_data/training_curves_recurrent4.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_recurrent4.png)
+We can notice that this attempted improvement works way worst than the previous architecture indeed now the model is not able to classify jump and lie down, morever now it exchange C as H. This could be due to the initial intuition that batch norm tends to offuscate the data in a way that is bad for spectrograms since it just create noise in the background given by other batches so we will stay with our instance normalization.
+
+To investigate the role of signal energy in activity classification, we conducted an ablation experiment comparing two normalization strategies on the multi-channel Late Fusion architecture:
+
+- Instance Normalization (per-window contrast scaling)
+- Global Z-Score Standardization (computed on the training set) combined with Batch Normalization
+
+The experimental comparison yielded a clear result:
+
+- Instance Normalization achieved superior performance, reaching ~80% validation accuracy with stable validation loss curves. It effectively isolated micro-Doppler frequency shifts, enabling the model to correctly identify *Jump* ($71.3\%$) and *Lie down* ($80.6\%$).
+- Global Z-Score + BatchNorm caused a severe model collapse. As shown in the validation curves, the validation loss exploded past $2.5$, with accuracy dropping to $33\%$. Crucially, the confusion matrix reveals that without per-sample gain normalization, $82.7\%$ of *Jump* instances were misclassified as *Walk*, and $71.3\%$ of *Lie down* instances collapsed into the *Empty* class.
+
+In Wi-Fi CFR/Doppler spectrograms, absolute signal amplitude is heavily corrupted by path loss, distance to antennas, and hardware Automatic Gain Control (AGC). A global Z-score leaves these position-dependent gain variations intact, forcing the model to classify based on signal power rather than movement patterns.
+
+Conversely, Instance Normalization acts as a local contrast enhancement, making the representation invariant to subject distance while preserving the structural micro-Doppler velocity signature. Consequently, Late Fusion with Instance Normalization was selected as our final optimal architecture.
+
+To check if all the updates we made on the architecture where actually helpful or its just the channel fusion to make the magic, to do so we implemented it in the baseline architecture using the training parameter we used in the current model and obtain the following results:
+![Recurrent Curves Version2](./src/plot_data/training_curves_baseline4.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_baseline4.png)
+
+We would now to implement a new technique on how to deal with the results of LSTM and aggregate the temporal informations:
+Instead of relying on global statistics, we implement a temporal attention mechanism to identify the features we are more interested in for a given case and which are less interesting, which should make us increase the performance theoretically. especially in the case of the jump / walk and the lay / empty activities, that are the one our current model makes more difficulties to learn.
+To do so we designed a temporal attention layer that computes the relevance score for each temporal frame through a ff layer that is then passed to a softmax function to normalize the values. The final vector is constructed as the weighted linear combination of the frame-level lstm representations
+We opted to keed the standard deviation with the attention to get additional information on the type of movement (continued or instantaneous).
+While the BiLSTM captures the sequential dependency and temporal context across adjacent frames, the Temporal Attention layer acts as an adaptive pooling mechanism. It replaces static global operations (like time-averaging) by dynamically selecting and emphasizing the most informative LSTM hidden states while suppressing stationary background frames.

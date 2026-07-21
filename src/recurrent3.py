@@ -1,29 +1,33 @@
 import json
 import torch
 import matplotlib.pyplot as plt
-from torch.nn import BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
+from torch.nn import LSTM, BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
 import numpy as np
 from torch.utils.data import DataLoader
-from dataset import CFR, SpectogramAugmentation
+from dataset2 import CFR, SpectogramAugmentation
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 from tqdm import tqdm
 
-class BaselineNet(torch.nn.Module):
+class ConvolutionalRecurrentNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.sequential=Sequential(
+        self.cnn  = Sequential(
             InceptionModule(),
             Conv2d(kernel_size=4,stride=2,padding=0,out_channels=32,in_channels=15),  # 32, 84, 24
             InstanceNorm2d(num_features=32, affine=True), 
             ReLU(),
             MaxPool2d(kernel_size=2, stride=2), # 32, 42, 12
-            Flatten(), 
+        )
+        # we will treat the 42 time steps as a sequence, and each time step has 32*12 features (number of filter * number of frequency bins)
+        self.lstm = LSTM(input_size=32*12, hidden_size=64, num_layers=2, dropout=0.2, batch_first=True, bidirectional=True) 
+        # for each of the temporal steps, we output a vector of size 128
+        self.classificator=Sequential(
             Dropout(0.2),
-            Linear(in_features=32*42*12, out_features=128),
+            Linear(in_features=384, out_features=128), # head projection that maps the 128 features from the LSTM (bidirectional) to 128 features that merge those informations
             ReLU(),
             BatchNorm1d(num_features=128, momentum=0.01),
-            Dropout(0.1),
+            Dropout(0.2),
             Linear(in_features=128,out_features=8),
         )
         self.apply(self._init_weights)
@@ -37,7 +41,21 @@ class BaselineNet(torch.nn.Module):
 
     
     def forward(self,x) -> torch.Tensor:
-        return self.sequential(x)
+        # convolutional network
+        x = self.cnn(x)
+        # we reshape the output of the CNN to be suitable for the LSTM: (batch_size, time_steps, channels * features)
+        x = x.permute(0, 2, 1, 3)
+        batch_size, time_steps, channels, features = x.size()
+        x = x.reshape(batch_size, time_steps, channels * features)
+        # recurrent layer
+        x  = self.lstm(x)[0] # we only take the output of the last layer of the LSTM
+
+        mean = torch.mean(x, dim=1) # we average the output of the LSTM over the time dimensiom
+        max = torch.max(x, dim=1).values # we take the max over the time dimension
+        std = torch.std(x, dim=1, unbiased=False) # we take the std over the time dimension
+
+        x = torch.cat((mean, max, std), dim=-1) # we concatenate the mean, max and std to get a vector of size 128*3=384
+        return self.classificator(x)
 
 
 class InceptionModule(torch.nn.Module):
@@ -87,12 +105,12 @@ class InceptionModule(torch.nn.Module):
         return y
 
 if __name__ == "__main__":
-    model = BaselineNet()
+    model = ConvolutionalRecurrentNet()
     transform = SpectogramAugmentation()
-    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=5, transform=transform)
+    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=25, transform=transform)
     val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5)
 
-    batch_size = 64
+    batch_size = 32
     num_workers = 0
     pin_memory = torch.cuda.is_available()
 
@@ -103,17 +121,17 @@ if __name__ == "__main__":
                                 num_workers=num_workers, pin_memory=pin_memory)
 
 
-    opt = Adam(model.parameters(), lr=3e-4, weight_decay = 1e-4)
+    opt = Adam(model.parameters(), lr=1.5e-4, weight_decay = 3e-4)
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
-    epochs = 50
+    epochs = 100
     patience = 10
     counter = 0
 
     best_val = np.inf
-    checkpoint_path = "./models/baseline3_model.pt"
+    checkpoint_path = "./models/recurrent3_model.pt"
 
     history = {
         "train": [],
@@ -132,11 +150,13 @@ if __name__ == "__main__":
         ntrain = 0
         train_iterator = tqdm(train_dataloader)
         for batch_x, batch_y in train_iterator:
-            batch_x = batch_x.to(device)
+            size = batch_x.size(0)
+            batch_x = batch_x.view(-1,1,340,100).to(device)
             batch_y = batch_y.to(device)
 
             y_pred = model(batch_x)
-            loss = loss_fn(y_pred, batch_y)
+            y_pred_grouped = y_pred.view(size, 4, -1).mean(dim=1)
+            loss = loss_fn(y_pred_grouped, batch_y)
 
             opt.zero_grad()
             loss.backward()
@@ -159,16 +179,18 @@ if __name__ == "__main__":
         with torch.no_grad():
             val_iterator = tqdm(valid_dataloader)
             for batch_x, batch_y in val_iterator:
-                batch_x = batch_x.to(device)
+                size = batch_x.size(0)
+                batch_x = batch_x.view(-1,1,340,100).to(device)
                 batch_y = batch_y.to(device)
 
                 y_pred = model(batch_x)
-                batch_loss = loss_fn(y_pred, batch_y)
+                y_pred_grouped = y_pred.view(size, 4, -1).mean(dim=1) # we average the predictions of the 4 windows to get a single prediction for each sample
+                batch_loss = loss_fn(y_pred_grouped, batch_y)
 
-                cumval_loss += batch_loss.item() * batch_x.size(0)
-                nval += batch_x.size(0)
+                cumval_loss += batch_loss.item() * size
+                nval += size
 
-                predictions = y_pred.argmax(dim=1)
+                predictions = y_pred_grouped.argmax(dim=1)
                 nval_correct += (predictions == batch_y).sum().item()
 
                 val_iterator.set_description(f"Validation loss: {batch_loss.item():.5f}")
@@ -200,7 +222,7 @@ if __name__ == "__main__":
         scheduler.step()
 
 
-    history_path = "plot_data/training_history_baseline3.json"
+    history_path = "plot_data/training_history_recurrent3.json"
 
     with open(history_path, "w") as f:
         json.dump(history, f, indent=4)
