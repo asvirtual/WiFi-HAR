@@ -100,5 +100,11 @@ In Wi-Fi CFR/Doppler spectrograms, absolute signal amplitude is heavily corrupte
 Conversely, Instance Normalization acts as a local contrast enhancement, making the representation invariant to subject distance while preserving the structural micro-Doppler velocity signature. Consequently, Late Fusion with Instance Normalization was selected as our final optimal architecture.
 
 To check if all the updates we made on the architecture where actually helpful or its just the channel fusion to make the magic, to do so we implemented it in the baseline architecture using the training parameter we used in the current model and obtain the following results:
+![Recurrent Curves Version2](./src/plot_data/training_curves_baseline4.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_baseline4.png)
 
-We would now to implement a new technique on how to deal with the results of LSTM, which is by using attention to identify the features we are more interested in for a given case and which are less interesting, which should make us increase the performance theoretically. especially in the case of the jump / walk and the lay / empty activities, that are the one our current model makes more difficulties to learn.
+We would now to implement a new technique on how to deal with the results of LSTM and aggregate the temporal informations:
+Instead of relying on global statistics, we implement a temporal attention mechanism to identify the features we are more interested in for a given case and which are less interesting, which should make us increase the performance theoretically. especially in the case of the jump / walk and the lay / empty activities, that are the one our current model makes more difficulties to learn.
+To do so we designed a temporal attention layer that computes the relevance score for each temporal frame through a ff layer that is then passed to a softmax function to normalize the values. The final vector is constructed as the weighted linear combination of the frame-level lstm representations
+We opted to keed the standard deviation with the attention to get additional information on the type of movement (continued or instantaneous).
+While the BiLSTM captures the sequential dependency and temporal context across adjacent frames, the Temporal Attention layer acts as an adaptive pooling mechanism. It replaces static global operations (like time-averaging) by dynamically selecting and emphasizing the most informative LSTM hidden states while suppressing stationary background frames.

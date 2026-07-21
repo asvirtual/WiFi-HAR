@@ -1,7 +1,7 @@
 import json
 import torch
 import matplotlib.pyplot as plt
-from torch.nn import LSTM, BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
+from torch.nn import LSTM, BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss, Tanh
 import numpy as np
 from torch.utils.data import DataLoader
 from dataset2 import CFR, SpectogramAugmentation
@@ -21,10 +21,11 @@ class ConvolutionalRecurrentNet(torch.nn.Module):
         )
         # we will treat the 42 time steps as a sequence, and each time step has 32*12 features (number of filter * number of frequency bins)
         self.lstm = LSTM(input_size=32*12, hidden_size=64, num_layers=2, dropout=0.2, batch_first=True, bidirectional=True) 
-        # for each of the temporal steps, we output a vector of size 128
+        self.attention = SelfAttention(in_features=128, attention_dim=64)
+
         self.classificator=Sequential(
             Dropout(0.2),
-            Linear(in_features=384, out_features=128), # head projection that maps the 128 features from the LSTM (bidirectional) to 128 features that merge those informations
+            Linear(in_features=256, out_features=128), # head projection that maps features from the LSTM (bidirectional) to 128 features that merge those informations (we have 256 since we also keep the standar deviation)
             ReLU(),
             BatchNorm1d(num_features=128, momentum=0.01),
             Dropout(0.2),
@@ -50,11 +51,10 @@ class ConvolutionalRecurrentNet(torch.nn.Module):
         # recurrent layer
         x  = self.lstm(x)[0] # we only take the output of the last layer of the LSTM
 
-        mean = torch.mean(x, dim=1) # we average the output of the LSTM over the time dimensiom
-        max = torch.max(x, dim=1).values # we take the max over the time dimension
+        context, attention_weights = self.attention(x) # we apply the self-attention mechanism to get a context vector of size 128
         std = torch.std(x, dim=1, unbiased=False) # we take the std over the time dimension
-
-        x = torch.cat((mean, max, std), dim=-1) # we concatenate the mean, max and std to get a vector of size 128*3=384
+        self.latest_attention_weights = attention_weights
+        x = torch.cat((context,std), dim=-1) # we concatenate the mean, max and std to get a vector of size 128*3=384
         return self.classificator(x)
 
 
@@ -106,8 +106,28 @@ class InceptionModule(torch.nn.Module):
 
 
 class SelfAttention(torch.nn.Module):
-    def __init__():
-        break
+    def __init__(self, in_features, attention_dim):
+        super().__init__()
+        self.attention = Sequential(
+            Linear(in_features=in_features, out_features=attention_dim),
+            Tanh(),
+            Linear(in_features=attention_dim, out_features=1, bias = False)
+        )
+
+    def _init_weights(self, module):
+        if isinstance(module, torch.nn.Conv2d):
+            torch.nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                module.bias.data.zero_()
+
+    
+    def forward(self, x):
+        scores = self.attention(x)  # (batch_size, time_steps, 1)
+        weights = torch.softmax(scores, dim=1) # normalize scores with softmax
+        context = torch.sum(weights * x, dim=1)  # weighted sum of the LSTM outputs: (batch_size, features)
+        return context, weights
+
+
 
 
 if __name__ == "__main__":
@@ -137,7 +157,7 @@ if __name__ == "__main__":
     counter = 0
 
     best_val = np.inf
-    checkpoint_path = "./models/recurrent3_model.pt"
+    checkpoint_path = "./models/recurrent5_model.pt"
 
     history = {
         "train": [],
@@ -156,11 +176,13 @@ if __name__ == "__main__":
         ntrain = 0
         train_iterator = tqdm(train_dataloader)
         for batch_x, batch_y in train_iterator:
+            size = batch_x.size(0)
             batch_x = batch_x.view(-1,1,340,100).to(device)
-            batch_y = batch_y.repeat_interleave(4).to(device)
+            batch_y = batch_y.to(device)
 
             y_pred = model(batch_x)
-            loss = loss_fn(y_pred, batch_y)
+            y_pred_grouped = y_pred.view(size, 4, -1).mean(dim=1)
+            loss = loss_fn(y_pred_grouped, batch_y)
 
             opt.zero_grad()
             loss.backward()
@@ -226,7 +248,7 @@ if __name__ == "__main__":
         scheduler.step()
 
 
-    history_path = "plot_data/training_history_recurrent3.json"
+    history_path = "plot_data/training_history_recurrent5.json"
 
     with open(history_path, "w") as f:
         json.dump(history, f, indent=4)
