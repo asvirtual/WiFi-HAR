@@ -76,8 +76,9 @@ But still the results are quite poor so we opted to change the approach on how w
 To do so we have lowered the dimension of the batch otherwise the epochs would have a very low cardinality and implemented a new dataset that put in a list all the matrices that register the same thing but with different channels such that we have all of them in the same batch all the times, we have also increase the number of epochs of train since we have less instances in each epoch (indeed if before we have 4 times the instances, know we group those as one instance to make the prediction): LATE FUSION.
 
 At first we thought that to optimize the trainig and validation, computing the loss directly on the mean of the logits was a better solution to obtain covnergence in the model, however the empirical comparison shows that the aggregated optimization brings a rapid overfit on the training campaign making the model reach a max accuracy of 75% with very high variability.
-![Recurrent Curves Version2](./src/plot_data/training_curves_recurrent6.png)
-![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_recurrent6.png)
+![Recurrent Curves Version2](./src/plot_data/training_curves_recurrent3mean.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_recurrent3mean.png)
+We can notice that the biggest problem of this model is the fact that it overfit a lot on the data, we would like to get a model that is more capable of generalizing data.
 
 Instead making the training on the different channels and then take the aggregation of them in the validation works pretty well as regolarization parameter since it makes the network extract the significant features in an independent fashion between channels decreasing the co-adaptation that makes the networrk generalize way better in the domai shift with an accuracy of 85% and more stability.
 
@@ -115,3 +116,10 @@ Instead of relying on global statistics, we implement a temporal attention mecha
 To do so we designed a temporal attention layer that computes the relevance score for each temporal frame through a ff layer that is then passed to a softmax function to normalize the values. The final vector is constructed as the weighted linear combination of the frame-level lstm representations
 We opted to keed the standard deviation with the attention to get additional information on the type of movement (continued or instantaneous).
 While the BiLSTM captures the sequential dependency and temporal context across adjacent frames, the Temporal Attention layer acts as an adaptive pooling mechanism. It replaces static global operations (like time-averaging) by dynamically selecting and emphasizing the most informative LSTM hidden states while suppressing stationary background frames.
+The results are the following:
+![Recurrent Curves Version2](./src/plot_data/training_curves_recurrent5.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_recurrent5.png)
+
+Which we can notice improve a lot the model making it perform way better than before. The biggest problem we can notice on tihs model is that it still make difficulties in classify the high energy movements correctly, indeed it seems to confuse them quite oftenly.
+One first improvement we implemented for this purpose is to try choosing the final label in a better way, indeed there could be a channel that is more confident about its decision than the other 3, so we should rely more on him than on the others, to do so we implemented a softmax entropy weighting.\
+a second improvement we implemented is specific to try improve the classification in case of jump/walk/run, which is to also obtain from the input the derivative from subsequent frame, in this way we can catch the acceleration of changements in a fixed way.

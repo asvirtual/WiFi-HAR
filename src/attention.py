@@ -157,7 +157,7 @@ if __name__ == "__main__":
     counter = 0
 
     best_val = np.inf
-    checkpoint_path = "./models/recurrent5_model.pt"
+    checkpoint_path = "./models/attention_model.pt"
 
     history = {
         "train": [],
@@ -246,7 +246,7 @@ if __name__ == "__main__":
         scheduler.step()
 
 
-    history_path = "plot_data/training_history_recurrent5.json"
+    history_path = "plot_data/training_history_attention.json"
 
     with open(history_path, "w") as f:
         json.dump(history, f, indent=4)
