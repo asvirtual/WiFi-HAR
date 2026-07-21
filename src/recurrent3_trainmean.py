@@ -1,11 +1,10 @@
 import json
 import torch
 import matplotlib.pyplot as plt
-from torch.nn import LSTM, BatchNorm1d, BatchNorm2d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
-from torchvision.transforms import Compose
+from torch.nn import LSTM, BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
 import numpy as np
 from torch.utils.data import DataLoader
-from dataset2 import CFR, SpectogramAugmentation, Normalize
+from dataset2 import CFR, SpectogramAugmentation
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 from tqdm import tqdm
@@ -16,7 +15,7 @@ class ConvolutionalRecurrentNet(torch.nn.Module):
         self.cnn  = Sequential(
             InceptionModule(),
             Conv2d(kernel_size=4,stride=2,padding=0,out_channels=32,in_channels=15),  # 32, 84, 24
-            BatchNorm2d(num_features=32), 
+            InstanceNorm2d(num_features=32, affine=True), 
             ReLU(),
             MaxPool2d(kernel_size=2, stride=2), # 32, 42, 12
         )
@@ -68,22 +67,22 @@ class InceptionModule(torch.nn.Module):
         # Conv @5 (2x2) stride 2
         self.convBlock1 = Sequential(
             Conv2d(kernel_size=2, stride=2, out_channels=5, in_channels=1),
-            BatchNorm2d(num_features=5),
+            InstanceNorm2d(num_features=5, affine=True),
             ReLU()
         )
 
         # Conv 3@ (1x1) stride 1 -> 6@ (2x2) stride 1 -> 9@ (4x4) stride 2
         self.convBlock2 = Sequential(                   
             Conv2d(kernel_size=1, stride=1, in_channels=1, out_channels=3),
-            BatchNorm2d(num_features=3),
+            InstanceNorm2d(num_features=3, affine=True),
             ReLU(),
 
             Conv2d(kernel_size=2, stride=1, in_channels=3, out_channels=6, padding='same'),
-            BatchNorm2d(num_features=6),
+            InstanceNorm2d(num_features=6, affine=True),
             ReLU(),
 
             Conv2d(kernel_size=4, stride=2, in_channels=6, out_channels=9, padding=1),
-            BatchNorm2d(num_features=9),
+            InstanceNorm2d(num_features=9, affine=True),
             ReLU()
             #Dropout2d(0.1)
         )
@@ -105,36 +104,11 @@ class InceptionModule(torch.nn.Module):
         y = torch.cat((x1, x2, x3), dim=1)
         return y
 
-def z_score(dataset):
-    loader = DataLoader(dataset, batch_size=64, shuffle=False)
-    total_sum = 0.0
-    total_sq_sum = 0.0
-    total_pixels = 0
-
-    for x, _ in loader:
-        x = x.float()
-        total_sum += x.sum().item()
-        total_sq_sum += (x ** 2).sum().item()
-        total_pixels += x.numel()
-
-    mean_global = total_sum / total_pixels
-    var_global = (total_sq_sum / total_pixels) - (mean_global ** 2)
-    std_global = (var_global ** 0.5) + 1e-8
-    
-    return mean_global, std_global
-
-
 if __name__ == "__main__":
     model = ConvolutionalRecurrentNet()
-    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=25, transform=SpectogramAugmentation())
+    transform = SpectogramAugmentation()
+    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=25, transform=transform)
     val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5)
-
-    mean, std = z_score(train_dataset)
-    train_transform = Compose([SpectogramAugmentation(), Normalize(mean, std)])
-    val_transform = Normalize(mean, std)
-
-    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=25, transform=train_transform)
-    val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5, transform=val_transform)
 
     batch_size = 32
     num_workers = 0
@@ -157,7 +131,7 @@ if __name__ == "__main__":
     counter = 0
 
     best_val = np.inf
-    checkpoint_path = "./models/recurrent4_model.pt"
+    checkpoint_path = "./models/recurrent3mean_model.pt"
 
     history = {
         "train": [],
@@ -176,11 +150,13 @@ if __name__ == "__main__":
         ntrain = 0
         train_iterator = tqdm(train_dataloader)
         for batch_x, batch_y in train_iterator:
+            size = batch_x.size(0)
             batch_x = batch_x.view(-1,1,340,100).to(device)
-            batch_y = batch_y.repeat_interleave(4).to(device)
+            batch_y = batch_y.to(device)
 
             y_pred = model(batch_x)
-            loss = loss_fn(y_pred, batch_y)
+            y_pred_grouped = y_pred.view(size, 4, -1).mean(dim=1)
+            loss = loss_fn(y_pred_grouped, batch_y)
 
             opt.zero_grad()
             loss.backward()
@@ -231,9 +207,7 @@ if __name__ == "__main__":
             checkpoint = {
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
-                'loss': val_loss,
-                'train_mean': mean,
-                'train_std': std
+                'loss': val_loss
             }
             torch.save(checkpoint, checkpoint_path)
             best_val = val_loss
@@ -248,7 +222,7 @@ if __name__ == "__main__":
         scheduler.step()
 
 
-    history_path = "plot_data/training_history_recurrent4.json"
+    history_path = "plot_data/training_history_recurrent3mean.json"
 
     with open(history_path, "w") as f:
         json.dump(history, f, indent=4)

@@ -65,7 +65,7 @@ def evaluate_model(model, test_loader, device, label_map, save_dir="./plot_data"
     axes[1].tick_params(axis='x', rotation=45)
 
     plt.tight_layout()
-    cm_path = os.path.join(save_dir, "confusion_matrix_baseline4.png")
+    cm_path = os.path.join(save_dir, "confusion_matrix_recurrent4.png")
     plt.savefig(cm_path, dpi=300)
     plt.close()
     

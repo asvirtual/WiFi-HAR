@@ -74,6 +74,13 @@ Which we can say that are great since we reduce the overfit given by the fact th
 
 But still the results are quite poor so we opted to change the approach on how we read the data for the training and make the predictions. Indeed we have 4 different channels for each room/activity/day monitored, and until now we just took those 4 different instances as independent instances to train the model on, the problem on this are 2: no assumption of iid (which is also already affected by the sliding windows but in this case those are extactly the same movement monitored at the same time), and we dont leverage the fact that we have multiple information on a given instance, which is quite a pity. The idea is to now use the channel fusion and see if it actually fix our problems of accuracy. So what we basically do is to take a kind of majority vote between the different channels on the given action on the same given moment and take that as predicted label.\
 To do so we have lowered the dimension of the batch otherwise the epochs would have a very low cardinality and implemented a new dataset that put in a list all the matrices that register the same thing but with different channels such that we have all of them in the same batch all the times, we have also increase the number of epochs of train since we have less instances in each epoch (indeed if before we have 4 times the instances, know we group those as one instance to make the prediction): LATE FUSION.
+
+At first we thought that to optimize the trainig and validation, computing the loss directly on the mean of the logits was a better solution to obtain covnergence in the model, however the empirical comparison shows that the aggregated optimization brings a rapid overfit on the training campaign making the model reach a max accuracy of 75% with very high variability.
+![Recurrent Curves Version2](./src/plot_data/training_curves_recurrent6.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_recurrent6.png)
+
+Instead making the training on the different channels and then take the aggregation of them in the validation works pretty well as regolarization parameter since it makes the network extract the significant features in an independent fashion between channels decreasing the co-adaptation that makes the networrk generalize way better in the domai shift with an accuracy of 85% and more stability.
+
 The following are the results of the obtained model:
 ![Recurrent Curves Version2](./src/plot_data/training_curves_recurrent3.png)
 ![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_recurrent3.png)

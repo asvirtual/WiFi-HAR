@@ -81,7 +81,7 @@ class InceptionModule(torch.nn.Module):
 if __name__ == "__main__":
     model = BaselineNet()
     transform = SpectogramAugmentation()
-    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=25, transform=transform)
+    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=25)
     val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5)
 
     batch_size = 32

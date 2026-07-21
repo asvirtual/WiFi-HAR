@@ -127,7 +127,7 @@ if __name__ == "__main__":
     model.to(device)
 
     epochs = 100
-    patience = 10
+    patience = 15
     counter = 0
 
     best_val = np.inf
@@ -150,13 +150,11 @@ if __name__ == "__main__":
         ntrain = 0
         train_iterator = tqdm(train_dataloader)
         for batch_x, batch_y in train_iterator:
-            size = batch_x.size(0)
             batch_x = batch_x.view(-1,1,340,100).to(device)
-            batch_y = batch_y.to(device)
+            batch_y = batch_y.repeat_interleave(4).to(device)
 
             y_pred = model(batch_x)
-            y_pred_grouped = y_pred.view(size, 4, -1).mean(dim=1)
-            loss = loss_fn(y_pred_grouped, batch_y)
+            loss = loss_fn(y_pred, batch_y)
 
             opt.zero_grad()
             loss.backward()

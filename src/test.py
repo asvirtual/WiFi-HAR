@@ -3,15 +3,15 @@ import torch, json
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-from baseline4 import BaselineNet
+from recurrent4 import ConvolutionalRecurrentNet
 from dataset2 import CFR
 from model_evaluation2 import evaluate_model
 
-history_path = "plot_data/training_history_baseline4.json"
+history_path = "plot_data/training_history_recurrent4.json"
 with open(history_path, "r") as f:
     history = json.load(f)
 
-checkpoint_path = "./models/baseline4_model.pt"
+checkpoint_path = "./models/recurrent4_model.pt"
 checkpoint = torch.load(checkpoint_path)
 
 if 'train_mean' in checkpoint and 'train_std' in checkpoint:
@@ -52,13 +52,13 @@ plt.legend()
 plt.grid(True)
 
 plt.tight_layout()
-plt.savefig("./plot_data/training_curves_baseline4.png")  # Salva il grafico come immagine sul PC
+plt.savefig("./plot_data/training_curves_recurrent4.png")  # Salva il grafico come immagine sul PC
 plt.show()
 
 
 # TESTING
 
-model = BaselineNet()
+model = ConvolutionalRecurrentNet()
 model.load_state_dict(checkpoint['model_state_dict'])
 
 
