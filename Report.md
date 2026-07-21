@@ -77,10 +77,28 @@ To do so we have lowered the dimension of the batch otherwise the epochs would h
 The following are the results of the obtained model:
 ![Recurrent Curves Version2](./src/plot_data/training_curves_recurrent3.png)
 ![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_recurrent3.png)
+We can notice that with this correction the model performs way better than before, the problems given by the lie down activity and the jump activity are way less and we have a more precise model that doesn't overfit at all since the validation loss is a random walk around the training loss, maybe one thing we could improve is to reduce the variability, but since now we have moved to a lower number of batches due to the fact that we need 4 instances to classify a given moment it is quite normal.
 
 Another thing we wanted to try is to now remove the instance normalization since it kind of make the filters treat in the same way matrices with different energies since we normalize the matrix and maybe now that we have implemented recurrency if elements are more distinct it could actually benefit the model
 To solve this without regressing on training stability, we transitioned from Instance Normalization to Global Z-Score / BatchNorm, preserving cross-sample energy relationships. The following are the results of this refinement:
 ![Recurrent Curves Version2](./src/plot_data/training_curves_recurrent4.png)
 ![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_recurrent4.png)
+We can notice that this attempted improvement works way worst than the previous architecture indeed now the model is not able to classify jump and lie down, morever now it exchange C as H. This could be due to the initial intuition that batch norm tends to offuscate the data in a way that is bad for spectrograms since it just create noise in the background given by other batches so we will stay with our instance normalization.
 
-(We would now like to try a third approach on how to deal with the results of LSTM, which is by using attention to identify the features we are more interested in for a given case and which are less interesting, which should make us increase the performance theoretically.)
+To investigate the role of signal energy in activity classification, we conducted an ablation experiment comparing two normalization strategies on the multi-channel Late Fusion architecture:
+
+- Instance Normalization (per-window contrast scaling)
+- Global Z-Score Standardization (computed on the training set) combined with Batch Normalization
+
+The experimental comparison yielded a clear result:
+
+- Instance Normalization achieved superior performance, reaching ~80% validation accuracy with stable validation loss curves. It effectively isolated micro-Doppler frequency shifts, enabling the model to correctly identify *Jump* ($71.3\%$) and *Lie down* ($80.6\%$).
+- Global Z-Score + BatchNorm caused a severe model collapse. As shown in the validation curves, the validation loss exploded past $2.5$, with accuracy dropping to $33\%$. Crucially, the confusion matrix reveals that without per-sample gain normalization, $82.7\%$ of *Jump* instances were misclassified as *Walk*, and $71.3\%$ of *Lie down* instances collapsed into the *Empty* class.
+
+In Wi-Fi CFR/Doppler spectrograms, absolute signal amplitude is heavily corrupted by path loss, distance to antennas, and hardware Automatic Gain Control (AGC). A global Z-score leaves these position-dependent gain variations intact, forcing the model to classify based on signal power rather than movement patterns.
+
+Conversely, Instance Normalization acts as a local contrast enhancement, making the representation invariant to subject distance while preserving the structural micro-Doppler velocity signature. Consequently, Late Fusion with Instance Normalization was selected as our final optimal architecture.
+
+To check if all the updates we made on the architecture where actually helpful or its just the channel fusion to make the magic, to do so we implemented it in the baseline architecture using the training parameter we used in the current model and obtain the following results:
+
+We would now to implement a new technique on how to deal with the results of LSTM, which is by using attention to identify the features we are more interested in for a given case and which are less interesting, which should make us increase the performance theoretically. especially in the case of the jump / walk and the lay / empty activities, that are the one our current model makes more difficulties to learn.
