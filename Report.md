@@ -117,9 +117,27 @@ To do so we designed a temporal attention layer that computes the relevance scor
 We opted to keed the standard deviation with the attention to get additional information on the type of movement (continued or instantaneous).
 While the BiLSTM captures the sequential dependency and temporal context across adjacent frames, the Temporal Attention layer acts as an adaptive pooling mechanism. It replaces static global operations (like time-averaging) by dynamically selecting and emphasizing the most informative LSTM hidden states while suppressing stationary background frames.
 The results are the following:
-![Recurrent Curves Version2](./src/plot_data/training_curves_recurrent5.png)
-![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_recurrent5.png)
+![Recurrent Curves Version2](./src/plot_data/training_curves_attention.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_attention.png)
+Accuracy : 83.48%
+Macro F1-Score  : 83.52%
+
+In alternative to this we tried to subsitute the LSTM with the attention with a multihead transformer encoder, giving us very bad results, probably due to the fact that the transformer is better in obtaining the context in case of longer sequence and is more prone to overfit in case of less samples.
+![Recurrent Curves Version2](./src/plot_data/training_curves_transformer.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_transformer.png)
+Indeed we can notice that it is very sure about some classes, making it too confident and making wrong decisions
 
 Which we can notice improve a lot the model making it perform way better than before. The biggest problem we can notice on tihs model is that it still make difficulties in classify the high energy movements correctly, indeed it seems to confuse them quite oftenly.
 One first improvement we implemented for this purpose is to try choosing the final label in a better way, indeed there could be a channel that is more confident about its decision than the other 3, so we should rely more on him than on the others, to do so we implemented a softmax entropy weighting.\
+![Recurrent Curves Version2](./src/plot_data/training_curves_attention2.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_attention2.png)
+we can notice that we have less difficulties in distinguish H from C but now we have more difficulties in distinguish C from H and the other results are kind of the same but a little worst, so we can say that just taking the mean of the 4 antennas instead of the weighted average is better since it is less penalized in case the antenna that is sure has made a wrong decision
+
 a second improvement we implemented is specific to try improve the classification in case of jump/walk/run, which is to also obtain from the input the derivative from subsequent frame, in this way we can catch the acceleration of changements in a fixed way.
+![Recurrent Curves Version2](./src/plot_data/training_curves_attention3.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_attention3.png)
+Accuracy : 84.24%
+Macro F1-Score  : 84.05%
+which has some improvement in the classification of J but is a little worst in classifying S
+
+we want now to test the model just on the main challenges which are jump, run, walk, sit and empty using other environments as test set to check if we are able to generalize also in the case of another environment. In the validation set we still just use the dataset S1 since its the one we have to use for the training, so what we are trying to do now is to make the model focus on the activities more interesting for the paper and see if in this case the model performs better or there is still the problem of jump, run and walk.

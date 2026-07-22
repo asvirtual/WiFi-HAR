@@ -3,23 +3,23 @@ import torch, json
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-from attention2 import ConvolutionalRecurrentNet
+from attention3 import ConvolutionalRecurrentNet
 from dataset2 import CFR
 from model_evaluation2 import evaluate_model
 
-history_path = "plot_data/training_history_attention2.json"
+history_path = "plot_data/training_history_attention3.json"
 with open(history_path, "r") as f:
     history = json.load(f)
 
-checkpoint_path = "./models/attention2_model.pt"
+checkpoint_path = "./models/attention3_model.pt"
 checkpoint = torch.load(checkpoint_path)
 
 if 'train_mean' in checkpoint and 'train_std' in checkpoint:
     mean = checkpoint['train_mean']
     std = checkpoint['train_std']
-    test_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="test", transform=Normalize(mean, std))
+    test_dataset = CFR(folder="../data/doppler_traces/S2", campaigns=["a"], split_mode="test", transform=Normalize(mean, std))
 else:
-    test_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="test")
+    test_dataset = CFR(folder="../data/doppler_traces/S2", campaigns=["a"], split_mode="test")
 
 batch_size = 64
 num_workers = 0
@@ -52,7 +52,7 @@ plt.legend()
 plt.grid(True)
 
 plt.tight_layout()
-plt.savefig("./plot_data/training_curves_attention2.png")  # Salva il grafico come immagine sul PC
+plt.savefig("./plot_data/training_curves_attention3.png")  # Salva il grafico come immagine sul PC
 plt.show()
 
 

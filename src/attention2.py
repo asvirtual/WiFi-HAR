@@ -159,7 +159,7 @@ if __name__ == "__main__":
     model.to(device)
 
     epochs = 100
-    patience = 15
+    patience = 25
     counter = 0
 
     best_val = np.inf

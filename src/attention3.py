@@ -8,6 +8,7 @@ from dataset2 import CFR, SpectogramAugmentation
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 from tqdm import tqdm
+from torch.utils.data import ConcatDataset
 
 class ConvolutionalRecurrentNet(torch.nn.Module):
     def __init__(self):
@@ -119,9 +120,10 @@ class SelfAttention(torch.nn.Module):
             Tanh(),
             Linear(in_features=attention_dim, out_features=1, bias = False)
         )
+        self.apply(self._init_weights)
 
     def _init_weights(self, module):
-        if isinstance(module, torch.nn.Conv2d):
+        if isinstance(module, torch.nn.Linear):
             torch.nn.init.xavier_uniform_(module.weight)
             if module.bias is not None:
                 module.bias.data.zero_()
@@ -142,6 +144,7 @@ if __name__ == "__main__":
     train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=25, transform=transform)
     val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5)
 
+
     batch_size = 32
     num_workers = 0
     pin_memory = torch.cuda.is_available()
@@ -159,7 +162,7 @@ if __name__ == "__main__":
     model.to(device)
 
     epochs = 100
-    patience = 15
+    patience = 25
     counter = 0
 
     best_val = np.inf
