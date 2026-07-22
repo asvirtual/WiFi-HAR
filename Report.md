@@ -148,9 +148,17 @@ To try deal more properly with this issue we tried to fix the loss function such
 We also implemented some update in the architecture to make it smoother, precisely we tried to make the inception module more robust and increase the parameters in the lstm module, moreover we retried to implement the different models that takes the decision in different ways:
 
 - standard method where we use the individual instances in the training and then do an ensamble in the validation
+![Recurrent Curves Version2](./src/plot_data/training_curves_attention5.png)
 - alternative method that implemets the sofmax entropy weighting both on training and validation -> it also has a temperature parameter that makes it choose the way the decision is influenced by the most confident antenna.
+![Recurrent Curves Version2](./src/plot_data/training_curves_attention6.png)
 - alternative method that implements attention between the channels both on training and validation
 while the other model we tried to make the inception module more robust and increase the parameters in the lstm module, moreover we retried to implement the model that takes the mean even in the train.
+![Recurrent Curves Version2](./src/plot_data/training_curves_attention7.png)
+
+From the results we can notice that the model using sofmax entropy weighting is the best since it's validation loss is more stable and has more prospect to be improved, given this we tried to focus on this technique and try to improve it by balancing the weight of the different classes independently by the number of samples, in this way a class will not be preferred in case of more instances, we also tried to use a different scheduler using the ReduceLROnPlateau and switched to AdamW which are theoretically provides more stability, the goal here is to make the training more responsive and less variable.
+![Recurrent Curves Version2](./src/plot_data/training_curves_attention8.png)
+The new model seems to be more robust with a less variable loss meaning that the model is learning in a more stable way, moreover from the confusion matrices given by the different dataset we can notice that this new model is more able to evaluate evenly the different activities while the previous model was more confident about some classes and less confident about some others. But still the gap between training loss and validation loss is pretty high and we want to make it generalize better to the situations where the model see different days/environment/persons.
+To do so we tried to increase the regolarization by increasing weight decay and dropout and by slightly reducing ability of the classifier and by implementing mixstyle at the end of the inception module such that we simulate different environments.
 
 ## Person Identification task
 
