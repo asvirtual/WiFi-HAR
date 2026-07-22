@@ -173,7 +173,7 @@ The classification pipeline merges a customized multi-antenna feature extractor 
 - **4-Channel Inception Backbone:** A dedicated convolutional backbone (`BaselineNet`) was developed using a modified `InceptionModule` structured to process **4 synchronized Wi-Fi receiving antennas**  simultaneously. The block concatenates multiscale convolutions yielding a 52-channel feature representation. To preserve temporal resolution across the Doppler spectrograms, a $1\times1$ convolution (`out_channels=16`) was applied prior to flattening, feeding into a high-capacity 256-unit dense layer regularized by `Dropout(0.4)`.
 - **Supervised Contrastive Module Integration:** To prevent the network from overfitting to static architectural features (e.g., room walls and furniture reflections), a standalone Supervised Contrastive Loss module  was grafted into the classification architecture. To decouple feature representation learning from standard linear inference, a 3-layer **Projector Head** ($256 \to 128 \to 64$) was appended directly to the 256-unit latent embedding.
 
-## 2. Evaluation Protocol & Data Split Strategy
+### 2. Evaluation Protocol & Data Split Strategy
 
 To eliminate data leakage and evaluate true domain generalization, the dataset was partitioned into three distinct experimental benchmarks based on physical room geometry and propagation conditions:
 
@@ -188,7 +188,7 @@ To eliminate data leakage and evaluate true domain generalization, the dataset w
 
 ---
 
-## 4. Optimization Debugging: Confidence Overestimation & Early Stopping
+### 4. Optimization Debugging: Confidence Overestimation & Early Stopping
 
 Monitoring validation convergence revealed a critical divergence between logarithmic loss and discrete classification metrics:
 
@@ -199,7 +199,7 @@ Monitoring validation convergence revealed a critical divergence between logarit
 
 ---
 
-## 5. Summary of Results of last test
+### 5. Summary of Results of last test
 
 - **~100% In-Domain Accuracy** on control baseline (P2).
 - **~95% Multi-Domain Accuracy** under No-LOS conditions (P1).
@@ -207,3 +207,16 @@ Monitoring validation convergence revealed a critical divergence between logarit
 
 ![Person identification Curves Version](./person_identification/training_curves.png)
 ![Confusion Matrices PID Version](./person_identification/confusion_matrix_test.png)
+
+
+
+### 6. Architectural Experiment: Why We Reverted from LSTM/Attention to Pure CNN
+
+To see if tracking temporal sequences could improve our Person Identification (PI) results, we borrowed the recurrent module (`LSTM + Self-Attention`) developed by our HAR team and grafted it onto our 4-channel Inception backbone. 
+
+adding the recurrent layers caused a massive performance drop on our Zero-Shot benchmark. Instead of generalizing better, the model started overfitting heavily and failing on unseen rooms.
+
+In Activity Recognition (HAR), time matters—an action evolves sequentially But Human Identity is all about instantaneous micro-Doppler frequency bursts caused by how hard someone's heel strikes the floor or how their limbs swing. Running these quick frequency spikes through a bidirectional LSTM and attention pooling effectively "smoothed them out," washing away the exact biometric details we needed.
+
+
+We reverted to our **Pure Convolutional Backbone (`Inception + SupCon Projector Head`)**. 
