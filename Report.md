@@ -196,3 +196,6 @@ Monitoring validation convergence revealed a critical divergence between logarit
   * **~100% In-Domain Accuracy** on control baseline (P2).
   * **~95% Multi-Domain Accuracy** under No-LOS conditions (P1).
   * **~74% Zero-Shot Cross-Environment Accuracy** in completely unseen rooms (P0).
+
+![Person identification Curves Version](./person_identification/training_curves.png)
+![Confusion Matrices PID Version](./person_identification/confusion_matrix.png)
