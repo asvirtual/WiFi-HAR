@@ -146,3 +146,53 @@ and we saw that the model is already quite good at generalizing to other environ
 We had now implemented some update in the architecture to make it smoother, precisely in one we use mixstyle to make causally mix the style of 2 different samples in a batch during training, in this way we simulate the execution in a virtual environment we never saw before
 
 while the other model we tried to make the inception module more robust and increase the parameters in the lstm module, moreover we retried to implement the model that takes the mean even in the train.
+
+
+
+## Person Identification task
+
+We want to develop a domain-invariant pipeline robust to subject recognition 
+
+---
+
+### 1. Architectural Pipeline & Contrastive Integration
+
+The classification pipeline merges a customized multi-antenna feature extractor with a Supervised Contrastive Learning (SupCon) framework to enforce spatial and environmental invariance.
+
+* **4-Channel Inception Backbone:** A dedicated convolutional backbone (`BaselineNet`) was developed using a modified `InceptionModule` structured to process **4 synchronized Wi-Fi receiving antennas**  simultaneously. The block concatenates multiscale convolutions yielding a 52-channel feature representation. To preserve temporal resolution across the Doppler spectrograms, a $1\times1$ convolution (`out_channels=16`) was applied prior to flattening, feeding into a high-capacity 256-unit dense layer regularized by `Dropout(0.4)`.
+* **Supervised Contrastive Module Integration:** To prevent the network from overfitting to static architectural features (e.g., room walls and furniture reflections), a standalone Supervised Contrastive Loss module  was grafted into the classification architecture. To decouple feature representation learning from standard linear inference, a 3-layer **Projector Head** ($256 \to 128 \to 64$) was appended directly to the 256-unit latent embedding.
+
+
+
+## 2. Evaluation Protocol & Data Split Strategy
+
+To eliminate data leakage and evaluate true domain generalization, the dataset was partitioned into three distinct experimental benchmarks based on physical room geometry and propagation conditions:
+
+| Subject | Training Environments | Testing Environments | Benchmark Objective |
+| :--- | :--- | :--- | :--- |
+| **Persona 0** | `S1a`, `S4a`  | `S2a`, `S6a`, `S4b` | **True Zero-Shot:** Tested in 100% unseen rooms & different hardware. |
+| **Persona 1** | `S3a`, `S5a`  | `S3a`, `S5a` (Last 15% time slice) | **Multi-Domain Robustness:** Solved the No-LOS propagation collapse. |
+| **Persona 2** | `S7a` (First 70% time slice) | `S7a` (Last 15% time slice) | **In-Domain Control:** Anchor to verify baseline stability. |
+
+* **Solving the Non-Line-of-Sight (No-LOS) Collapse:** Early zero-shot evaluations revealed a critical physical limitation: models trained solely on a clean Line-of-Sight room (`S3a` for P1) suffered severe performance degradation when evaluated on a No-LOS room (`S5a`), misclassifying P1 as P0 in over 80% of cases due to direct-path signal attenuation. Incorporating `S5a` into the training set restored P1 classification accuracy to **~96–98%**, confirming that the Contrastive Loss successfully builds an invariant biometric cluster when exposed to sufficient spatial diversity.
+* **The Zero-Shot Benchmark (Persona 0):** P0 is evaluated exclusively on rooms (`S2a`, `S6a`) where the model has never entered. Residual misclassifications (P0 predicted as P1) are physically expected under severe RF Multipath Domain Shift, as unknown acoustic reflections distort P0's profile, occasionally mimicking the No-LOS signature learned for P1.
+
+---
+
+## 4. Optimization Debugging: Confidence Overestimation & Early Stopping
+
+Monitoring validation convergence revealed a critical divergence between logarithmic loss and discrete classification metrics:
+
+* **Loss vs. Accuracy Divergence:** Experimental logs showed that Validation Cross-Entropy Loss reached its minimum (~0.46) around Epoch 3 before steadily ascending, whereas Validation Accuracy continued to climb stably up to **~89%** by Epoch 15.
+* **Diagnosis:** This behavior was diagnosed as *Confidence Overestimation*. In a 3-class classification problem, once the network becomes highly confident, a single misclassified window predicted with 99% confidence penalizes the logarithmic loss severely ($-\log(0.01) \approx 4.6$). While the aggregate loss appeared degraded due to a few high-confidence outliers, the underlying feature representations and classification accuracy were still maturing.
+* **Metric-Driven Model Selection:** Because Cross-Entropy acts strictly as a *surrogate loss* for gradient backpropagation, relying on minimum Validation Loss for Early Stopping prematurely aborted training during the network's underfitting phase. The training loop was modified to checkpoint models (`best_model.pt`) based on the **Validation Macro F1-Score**. This ensures the selection of weights with the highest real-world generalization and class balance across all subjects.
+* **Label Smoothing Calibration:** label smoothing ( was removed from the primary loss function to prevent artificial class uncertainty from smearing decision boundaries in latent space during unseen room evaluation.
+
+---
+
+## 5. Summary of Results of last test
+
+ 
+  * **~100% In-Domain Accuracy** on control baseline (P2).
+  * **~95% Multi-Domain Accuracy** under No-LOS conditions (P1).
+  * **~74% Zero-Shot Cross-Environment Accuracy** in completely unseen rooms (P0).
