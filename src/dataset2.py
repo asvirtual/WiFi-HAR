@@ -17,7 +17,7 @@ SAMPLE_SIZE_ROWS = 340
 SAMPLE_SIZE_COLS = 100
 
 class SpectogramAugmentation:
-    def __init__(self, tprob=0.5, fprob=0.5, max_tmask=40, max_fmask=5):
+    def __init__(self, tprob=0.5, fprob=0.5, max_tmask=20, max_fmask=10):
         self.tprob = tprob
         self.fprob = fprob
         self.max_tmask = max_tmask
@@ -34,7 +34,7 @@ class SpectogramAugmentation:
         if random.random() < self.fprob:
             f_range = random.randint(2, self.max_fmask)
             f0 = random.randint(0, w - f_range)
-            #x[:, :, f0:f0+f_range] = 0.0
+            x[:, :, f0:f0+f_range] = 0.0
         return x
 
 class Normalize:

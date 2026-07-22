@@ -17,9 +17,9 @@ checkpoint = torch.load(checkpoint_path)
 if 'train_mean' in checkpoint and 'train_std' in checkpoint:
     mean = checkpoint['train_mean']
     std = checkpoint['train_std']
-    test_dataset = CFR(folder="../data/doppler_traces/S2", campaigns=["a"], split_mode="test", transform=Normalize(mean, std))
+    test_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="test", transform=Normalize(mean, std))
 else:
-    test_dataset = CFR(folder="../data/doppler_traces/S2", campaigns=["a"], split_mode="test")
+    test_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="test")
 
 batch_size = 64
 num_workers = 0

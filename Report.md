@@ -141,3 +141,8 @@ Macro F1-Score  : 84.05%
 which has some improvement in the classification of J but is a little worst in classifying S
 
 we want now to test the model just on the main challenges which are jump, run, walk, sit and empty using other environments as test set to check if we are able to generalize also in the case of another environment. In the validation set we still just use the dataset S1 since its the one we have to use for the training, so what we are trying to do now is to make the model focus on the activities more interesting for the paper and see if in this case the model performs better or there is still the problem of jump, run and walk.
+and we saw that the model is already quite good at generalizing to other environments / persons giving an accuracy / f1-score pretty similiar to the one obtained on the same environment.
+
+We had now implemented some update in the architecture to make it smoother, precisely in one we use mixstyle to make causally mix the style of 2 different samples in a batch during training, in this way we simulate the execution in a virtual environment we never saw before
+
+while the other model we tried to make the inception module more robust and increase the parameters in the lstm module, moreover we retried to implement the model that takes the mean even in the train.
