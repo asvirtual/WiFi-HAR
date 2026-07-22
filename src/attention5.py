@@ -1,5 +1,6 @@
 import json
 import torch
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from torch.nn import LSTM, BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss, Tanh
 import numpy as np
@@ -8,7 +9,6 @@ from dataset2 import CFR, SpectogramAugmentation
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 from tqdm import tqdm
-from torch.utils.data import ConcatDataset
 
 class ConvolutionalRecurrentNet(torch.nn.Module):
     def __init__(self, num_classes=5):
@@ -141,6 +141,24 @@ class SelfAttention(torch.nn.Module):
         return context, weights
 
 
+class FocalLoss(torch.nn.Module):
+    def __init__(self, alpha=0.25, gamma=1.0, reduction="mean"):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, logits, targets):
+        ce_loss = F.cross_entropy(logits, targets, reduction="none")
+        pt = torch.exp(-ce_loss)
+        focal_loss = self.alpha * (1.0 - pt) ** self.gamma * ce_loss
+
+        if self.reduction == "mean":
+            return focal_loss.mean()
+        if self.reduction == "sum":
+            return focal_loss.sum()
+        return focal_loss
+
 
 
 if __name__ == "__main__":
@@ -162,7 +180,8 @@ if __name__ == "__main__":
 
 
     opt = Adam(model.parameters(), lr=1.5e-4, weight_decay = 3e-4)
-    loss_fn = CrossEntropyLoss(label_smoothing=0.1)
+    ce_loss_fn = CrossEntropyLoss(label_smoothing=0.1)
+    focal_loss_fn = FocalLoss(gamma=1.0)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
@@ -194,7 +213,10 @@ if __name__ == "__main__":
             batch_y = batch_y.repeat_interleave(4).to(device)
 
             y_pred = model(batch_x)
-            loss = loss_fn(y_pred, batch_y)
+            loss_ce = ce_loss_fn(y_pred, batch_y)
+            loss_focal = focal_loss_fn(y_pred, batch_y)
+            loss = 0.7 * loss_ce + 0.3 * loss_focal
+            
 
             opt.zero_grad()
             loss.backward()
@@ -223,7 +245,7 @@ if __name__ == "__main__":
 
                 y_pred = model(batch_x)
                 y_pred_grouped = y_pred.view(size, 4, -1).mean(dim=1) # we average the predictions of the 4 windows to get a single prediction for each sample
-                batch_loss = loss_fn(y_pred_grouped, batch_y)
+                batch_loss = 0.7 * ce_loss_fn(y_pred_grouped, batch_y) + 0.3 * focal_loss_fn(y_pred_grouped, batch_y)
                 cumval_loss += batch_loss.item() * size
                 nval += size
 

@@ -143,6 +143,10 @@ which has some improvement in the classification of J but is a little worst in c
 we want now to test the model just on the main challenges which are jump, run, walk, sit and empty using other environments as test set to check if we are able to generalize also in the case of another environment. In the validation set we still just use the dataset S1 since its the one we have to use for the training, so what we are trying to do now is to make the model focus on the activities more interesting for the paper and see if in this case the model performs better or there is still the problem of jump, run and walk.
 and we saw that the model is already quite good at generalizing to other environments / persons giving an accuracy / f1-score pretty similiar to the one obtained on the same environment.
 
-We had now implemented some update in the architecture to make it smoother, precisely in one we use mixstyle to make causally mix the style of 2 different samples in a batch during training, in this way we simulate the execution in a virtual environment we never saw before
+But we saw that the problem is always the same -> the architecture have some difficulties in distinguish jump, walk and run, this could be due to the fact that with a window of 2 seconds, the model have some difficulties to distinguish an exèosive action like a jump from a more constant activity.
+To try deal more properly with this issue we tried to fix the loss function such that it penalizes the more difficult instances more than the easier ones, which is using a Focal Loss together with the multi-class cross entropy loss.
+We also implemented some update in the architecture to make it smoother, precisely we tried to make the inception module more robust and increase the parameters in the lstm module, moreover we retried to implement the different models that takes the decision in different ways:
 
-while the other model we tried to make the inception module more robust and increase the parameters in the lstm module, moreover we retried to implement the model that takes the mean even in the train.
+- standard method where we use the individual instances in the training and then do an ensamble in the validation
+- alternative method that implemets the sofmax entropy weighting both on training and validation -> it also has a temperature parameter that makes it choose the way the decision is influenced by the most confident antenna.
+- alternative method that implements attention between the channels both on training and validation

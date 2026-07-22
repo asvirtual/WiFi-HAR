@@ -3,32 +3,13 @@ import torch, json
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-from attention3 import ConvolutionalRecurrentNet
+from attention7 import ConvolutionalRecurrentNet
 from dataset2 import CFR
 from model_evaluation2 import evaluate_model
 
-history_path = "plot_data/training_history_attention3.json"
+history_path = "plot_data/training_history_attention7.json"
 with open(history_path, "r") as f:
     history = json.load(f)
-
-checkpoint_path = "./models/attention3_model.pt"
-checkpoint = torch.load(checkpoint_path)
-
-if 'train_mean' in checkpoint and 'train_std' in checkpoint:
-    mean = checkpoint['train_mean']
-    std = checkpoint['train_std']
-    test_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="test", transform=Normalize(mean, std))
-else:
-    test_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="test")
-
-batch_size = 64
-num_workers = 0
-pin_memory = torch.cuda.is_available()
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
-                              num_workers=num_workers, pin_memory=pin_memory)
 
 plt.figure(figsize=(12, 5))
 
@@ -52,16 +33,39 @@ plt.legend()
 plt.grid(True)
 
 plt.tight_layout()
-plt.savefig("./plot_data/training_curves_attention3.png")  # Salva il grafico come immagine sul PC
+plt.savefig("./plot_data/training_curves_attention7.png")  # Salva il grafico come immagine sul PC
 plt.show()
 
 
 # TESTING
 
-model = ConvolutionalRecurrentNet()
-model.load_state_dict(checkpoint['model_state_dict'])
+checkpoint_path = "./models/attention7_model.pt"
+checkpoint = torch.load(checkpoint_path)
 
+folders = [("../data/doppler_traces/S1", ["c"]), ("../data/doppler_traces/S4", ["a"]), ("../data/doppler_traces/S6", ["a"])]
 
-model = model.to(device)
-results = evaluate_model(model, test_dataloader, device, test_dataset.LABEL_MAP, save_dir="./plot_data")
+for folder in folders:
+    if 'train_mean' in checkpoint and 'train_std' in checkpoint:
+        mean = checkpoint['train_mean']
+        std = checkpoint['train_std']
+        test_dataset = CFR(folder=folder[0], campaigns=folder[1], split_mode="test", transform=Normalize(mean, std))
+    else:
+        test_dataset = CFR(folder=folder[0], campaigns=folder[1], split_mode="test")
+
+    batch_size = 64
+    num_workers = 0
+    pin_memory = torch.cuda.is_available()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+                                num_workers=num_workers, pin_memory=pin_memory)
+
+    model = ConvolutionalRecurrentNet()
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+    ds = folder[0].split("/")[-1]
+    model = model.to(device)
+    results = evaluate_model(model, test_dataloader, device, test_dataset.LABEL_MAP, ds=ds, save_dir="./plot_data")
+
 

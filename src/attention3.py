@@ -31,7 +31,7 @@ class ConvolutionalRecurrentNet(torch.nn.Module):
             ReLU(),
             BatchNorm1d(num_features=128, momentum=0.01),
             Dropout(0.2),
-            Linear(in_features=128,out_features=8),
+            Linear(in_features=128,out_features=5),
         )
         self.apply(self._init_weights)
 

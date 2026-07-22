@@ -1,5 +1,6 @@
 import json
 import torch
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from torch.nn import LSTM, BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss, Tanh
 import numpy as np
@@ -155,6 +156,25 @@ class AntennaAttentionFusion(torch.nn.Module):
         return y_fused, weights
 
 
+class FocalLoss(torch.nn.Module):
+    def __init__(self, alpha=0.25, gamma=1.0, reduction="mean"):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, logits, targets):
+        ce_loss = F.cross_entropy(logits, targets, reduction="none")
+        pt = torch.exp(-ce_loss)
+        focal_loss = self.alpha * (1.0 - pt) ** self.gamma * ce_loss
+
+        if self.reduction == "mean":
+            return focal_loss.mean()
+        if self.reduction == "sum":
+            return focal_loss.sum()
+        return focal_loss
+
+
 if __name__ == "__main__":
     model = ConvolutionalRecurrentNet()
     transform = SpectogramAugmentation()
@@ -176,8 +196,9 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
     fusion_layer = AntennaAttentionFusion(num_classes=5).to(device)
-    opt = Adam(list(model.parameters()) + list(fusion_layer.parameters()), lr=1.5e-4, weight_decay = 3e-4)
-    loss_fn = CrossEntropyLoss(label_smoothing=0.1)
+    opt = Adam(list(model.parameters()) + list(fusion_layer.parameters()), lr=1e-4, weight_decay=1e-4)
+    ce_loss_fn = CrossEntropyLoss(label_smoothing=0.1)
+    focal_loss_fn = FocalLoss(gamma=1.0)
     epochs = 100
     patience = 25
     counter = 0
@@ -211,7 +232,9 @@ if __name__ == "__main__":
         
             y_pred_fused, _ = fusion_layer(y_pred_grouped) # Shape: (32, 8)
 
-            loss = loss_fn(y_pred_fused, batch_y)
+            loss_ce = ce_loss_fn(y_pred_fused, batch_y)
+            loss_focal = focal_loss_fn(y_pred_fused, batch_y)
+            loss = 0.7 * loss_ce + 0.3 * loss_focal
 
             opt.zero_grad()
             loss.backward()
@@ -242,11 +265,11 @@ if __name__ == "__main__":
                 y_pred = model(batch_x)
                 y_pred_grouped = y_pred.view(size, 4, -1)
                 y_pred_fused, _ = fusion_layer(y_pred_grouped) # Fusion with Attention
-                batch_loss = loss_fn(y_pred_fused, batch_y)
+                batch_loss = 0.7 * ce_loss_fn(y_pred_fused, batch_y) + 0.3 * focal_loss_fn(y_pred_fused, batch_y)
                 cumval_loss += batch_loss.item() * size
                 nval += size
 
-                predictions = y_pred_grouped.argmax(dim=1)
+                predictions = y_pred_fused.argmax(dim=1)
                 nval_correct += (predictions == batch_y).sum().item()
 
                 val_iterator.set_description(f"Validation loss: {batch_loss.item():.5f}")
