@@ -17,7 +17,7 @@ SAMPLE_SIZE_ROWS = 340
 SAMPLE_SIZE_COLS = 100
 
 class SpectogramAugmentation:
-    def __init__(self, tprob=0.5, fprob=0.5, max_tmask=40, max_fmask=5):
+    def __init__(self, tprob=0.5, fprob=0.5, max_tmask=20, max_fmask=10):
         self.tprob = tprob
         self.fprob = fprob
         self.max_tmask = max_tmask
@@ -34,7 +34,7 @@ class SpectogramAugmentation:
         if random.random() < self.fprob:
             f_range = random.randint(2, self.max_fmask)
             f0 = random.randint(0, w - f_range)
-            #x[:, :, f0:f0+f_range] = 0.0
+            x[:, :, f0:f0+f_range] = 0.0
         return x
 
 class Normalize:
@@ -50,15 +50,13 @@ class Normalize:
 
 class CFR(Dataset):
     LABEL_MAP = {
-        "C": 0,
-        "E": 1,
-        "H": 2,
-        "J1": 3,
-        "J2": 3,
-        "L": 4,
-        "R": 5,
-        "S": 6,
-        "W": 7,
+        #"C": 0,
+        "E": 0,
+        #"H": 2,
+        "S": 1,
+        "W": 2,
+        "R": 3, 
+        "J": 4,
     }
 
     # def sliding_window(self, matrix, window_size, stride):
@@ -93,25 +91,36 @@ class CFR(Dataset):
                     continue
 
                 matrices = []
+                skip_group = False
                 for antenna_idx in range(4):
                     file = ant_dict[antenna_idx]
                     with open(f"{folder}{campaign}/{file}", "rb") as f:
                         matrix = torch.from_numpy(pickle.load(f)).float()
-                        if folder == "../data/doppler_traces/S1":
-                            if split_mode == "val":
-                                end_point = matrix.shape[0] // 2
-                                matrix = matrix[:end_point, :]
+                        if split_mode == "val":
+                            end_point = matrix.shape[0] // 2
+                            matrix = matrix[:end_point, :]
 
-                            if split_mode == "test":
-                                start_point = matrix.shape[0] // 2
-                                matrix = matrix[start_point:, :]
+                        if split_mode == "test":
+                            start_point = matrix.shape[0] // 2
+                            matrix = matrix[start_point:, :]
 
                         if matrix.shape[0] < SAMPLE_SIZE_ROWS:
+                            skip_group=True
                             break  # Skip files that are too short
 
                         matrices.append(matrix)
 
-                label_id = torch.tensor(self.LABEL_MAP[prefix.split("_")[1]]).long()
+                if skip_group or len(matrices) < 4:
+                    continue
+
+                label = prefix.split("_")[1]
+                label = label[0].upper()
+
+                if label not in self.LABEL_MAP:
+                    continue
+
+                label_id = torch.tensor(self.LABEL_MAP[label]).long()
+
                 group_idx = len(self.matrix_groups)
                 self.matrix_groups.append(matrices)
 

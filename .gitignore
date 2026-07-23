@@ -3,3 +3,5 @@ data/*
 .vscode/*
 baseline*.pt
 recurrent*.pt
+attention*.pt
+*.pt

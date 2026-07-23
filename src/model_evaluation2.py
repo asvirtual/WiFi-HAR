@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, accuracy_score, f1_score, ConfusionMatrixDisplay
 
-def evaluate_model(model, test_loader, device, label_map, save_dir="./plot_data"):
+def evaluate_model(model, test_loader, device, label_map, ds, save_dir="./plot_data"):
 
     os.makedirs(save_dir, exist_ok=True)
     model.eval()
@@ -65,7 +65,7 @@ def evaluate_model(model, test_loader, device, label_map, save_dir="./plot_data"
     axes[1].tick_params(axis='x', rotation=45)
 
     plt.tight_layout()
-    cm_path = os.path.join(save_dir, "confusion_matrix_baseline4.png")
+    cm_path = os.path.join(save_dir, f"confusion_matrix_attention8{ds}.png")
     plt.savefig(cm_path, dpi=300)
     plt.close()
     
