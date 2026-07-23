@@ -13,47 +13,34 @@ with open(history_path, "r") as f:
 
 plt.figure(figsize=(12, 5))
 
-    # Grafico delle Loss (Train vs Validation)
-    plt.subplot(1, 2, 1)
-    plt.plot(history["train"], label="Train Loss", color="blue", lw=2)
-    plt.plot(history["val"], label="Validation Loss", color="orange", lw=2)
-    plt.title("Loss Evolution")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.grid(True)
+# Grafico delle Loss (Train vs Validation)
+plt.subplot(1, 2, 1)
+plt.plot(history["train"], label="Train Loss", color="blue", lw=2)
+plt.plot(history["val"], label="Validation Loss", color="orange", lw=2)
+plt.title("Loss Evolution")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.legend()
+plt.grid(True)
 
-    # Grafico dell'Accuratezza di Validation
-    plt.subplot(1, 2, 2)
-    plt.plot(history["acc"], label="Val Accuracy", color="green", lw=2)
-    plt.title("Validation Accuracy Evolution")
-    plt.xlabel("Epochs")
-    plt.ylabel("Accuracy")
-    plt.legend()
-    plt.grid(True)
+# Grafico dell'Accuratezza di Validation
+plt.subplot(1, 2, 2)
+plt.plot(history["acc"], label="Val Accuracy", color="green", lw=2)
+plt.title("Validation Accuracy Evolution")
+plt.xlabel("Epochs")
+plt.ylabel("Accuracy")
+plt.legend()
+plt.grid(True)
 
-<<<<<<< HEAD
-    plt.tight_layout()
-    plt.savefig("./plot_data/training_curves_baseline4.png")  # Salva il grafico come immagine sul PC
-    plt.show()
-=======
+
 plt.tight_layout()
 plt.savefig("./plot_data/training_curves_attention10.png")  # Salva il grafico come immagine sul PC
 plt.show()
->>>>>>> 1d6c358a9026f95777a96686cd3ba8154dae8aec
 
 
-    # TESTING
-
-<<<<<<< HEAD
-    model = BaselineNet()
-    model.load_state_dict(checkpoint['model_state_dict'])
+# TESTING
 
 
-    model = model.to(device)
-    results = evaluate_model(model, test_dataloader, device, test_dataset.LABEL_MAP, save_dir="./plot_data")
-
-=======
 checkpoint_path = "./models/attention8_model.pt"
 checkpoint_path = "./models/attention10_model.pt"
 checkpoint = torch.load(checkpoint_path)
@@ -84,5 +71,3 @@ for folder in folders:
     model = model.to(device)
     results = evaluate_model(model, test_dataloader, device, test_dataset.LABEL_MAP, ds=ds, save_dir="./plot_data")
 
-
->>>>>>> 1d6c358a9026f95777a96686cd3ba8154dae8aec
