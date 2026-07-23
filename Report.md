@@ -159,6 +159,10 @@ From the results we can notice that the model using sofmax entropy weighting is 
 ![Recurrent Curves Version2](./src/plot_data/training_curves_attention8.png)
 The new model seems to be more robust with a less variable loss meaning that the model is learning in a more stable way, moreover from the confusion matrices given by the different dataset we can notice that this new model is more able to evaluate evenly the different activities while the previous model was more confident about some classes and less confident about some others. But still the gap between training loss and validation loss is pretty high and we want to make it generalize better to the situations where the model see different days/environment/persons.
 To do so we tried to increase the regolarization by increasing weight decay and dropout and by slightly reducing ability of the classifier and by implementing mixstyle at the end of the inception module such that we simulate different environments.
+![Recurrent Curves Version2](./src/plot_data/training_curves_attention9.png)
+this are the obtained results it seems like the regularization has bring some benefits but still not enough probably, moreover the regularization made the model predict the classes more evenly without biasing too much on a specific class.
+
+We have also tried to increase the regularization by making the spectogram augmentation implement some kind of noise in the data, but in this way we receive a slighty more regularized model that is less stable and with slighty worst performances indeed it is maybe too conservative so we stick with the model obtained at the previous point.
 
 ## Person Identification task
 
@@ -208,15 +212,12 @@ Monitoring validation convergence revealed a critical divergence between logarit
 ![Person identification Curves Version](./person_identification/training_curves.png)
 ![Confusion Matrices PID Version](./person_identification/confusion_matrix_test.png)
 
-
-
 ### 6. Architectural Experiment: Why We Reverted from LSTM/Attention to Pure CNN
 
-To see if tracking temporal sequences could improve our Person Identification (PI) results, we borrowed the recurrent module (`LSTM + Self-Attention`) developed by our HAR team and grafted it onto our 4-channel Inception backbone. 
+To see if tracking temporal sequences could improve our Person Identification (PI) results, we borrowed the recurrent module (`LSTM + Self-Attention`) developed by our HAR team and grafted it onto our 4-channel Inception backbone.
 
 adding the recurrent layers caused a massive performance drop on our Zero-Shot benchmark. Instead of generalizing better, the model started overfitting heavily and failing on unseen rooms.
 
 In Activity Recognition (HAR), time matters—an action evolves sequentially But Human Identity is all about instantaneous micro-Doppler frequency bursts caused by how hard someone's heel strikes the floor or how their limbs swing. Running these quick frequency spikes through a bidirectional LSTM and attention pooling effectively "smoothed them out," washing away the exact biometric details we needed.
 
-
-We reverted to our **Pure Convolutional Backbone (`Inception + SupCon Projector Head`)**. 
+We reverted to our **Pure Convolutional Backbone (`Inception + SupCon Projector Head`)**.

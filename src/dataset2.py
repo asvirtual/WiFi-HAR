@@ -16,6 +16,44 @@ Folder/file naming and structure
 SAMPLE_SIZE_ROWS = 340
 SAMPLE_SIZE_COLS = 100
 
+class SpectogramAugmentation2:
+    def __init__(self, tprob=0.6, fprob=0.6, max_tmask=15, max_fmask=8,
+                 noise_prob=0.4, gain_prob=0.4, noise_std=0.01,
+                 gain_range=(0.9, 1.1)):
+        self.tprob = tprob
+        self.fprob = fprob
+        self.max_tmask = max_tmask
+        self.max_fmask = max_fmask
+        self.noise_prob = noise_prob
+        self.gain_prob = gain_prob
+        self.noise_std = noise_std
+        self.gain_range = gain_range
+
+    def __call__(self, x):
+        x = x.clone()
+        h, w = x.shape[1], x.shape[2]  # height and width of the spectrogram
+
+        if random.random() < self.gain_prob:
+            scale = random.uniform(*self.gain_range)
+            x = x * scale
+
+        if random.random() < self.noise_prob:
+            noise = torch.randn_like(x) * self.noise_std
+            x = x + noise
+
+        if random.random() < self.tprob:
+            t_range = random.randint(5, self.max_tmask)
+            t0 = random.randint(0, h - t_range)
+            x[:, t0:t0 + t_range, :] = 0.0
+
+        if random.random() < self.fprob:
+            f_range = random.randint(2, self.max_fmask)
+            f0 = random.randint(0, w - f_range)
+            x[:, :, f0:f0 + f_range] = 0.0
+
+        return x
+
+
 class SpectogramAugmentation:
     def __init__(self, tprob=0.5, fprob=0.5, max_tmask=20, max_fmask=10):
         self.tprob = tprob

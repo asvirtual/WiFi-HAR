@@ -22,16 +22,16 @@ class ConvolutionalRecurrentNet(torch.nn.Module):
         )
         # we will treat the 42 time steps as a sequence, and each time step has 32*12 features (number of filter * number of frequency bins)
         # now we have double the parameters since we also want to deal with the derivative of the values in following time instances
-        self.lstm = LSTM(input_size=32*12*2, hidden_size=128, num_layers=2, dropout=0.25, batch_first=True, bidirectional=True) 
-        self.attention = SelfAttention(in_features=256, attention_dim=128)
+        self.lstm = LSTM(input_size=32*12*2, hidden_size=96, num_layers=2, dropout=0.25, batch_first=True, bidirectional=True) 
+        self.attention = SelfAttention(in_features=192, attention_dim=96)
 
         self.classificator=Sequential(
             Dropout(0.35),
-            Linear(in_features=512, out_features=128), # head projection that maps features from the LSTM (bidirectional) to 128 features that merge those informations (we have 256 since we also keep the standar deviation)
+            Linear(in_features=384, out_features=96), # head projection that maps features from the LSTM (bidirectional) to 128 features that merge those informations (we have 256 since we also keep the standar deviation)
             ReLU(),
-            BatchNorm1d(num_features=128, momentum=0.01),
+            BatchNorm1d(num_features=96, momentum=0.01),
             Dropout(0.35),
-            Linear(in_features=128,out_features=num_classes),
+            Linear(in_features=96,out_features=num_classes),
         )
         self.apply(self._init_weights)
 
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     counter = 0
 
     best_val = np.inf
-    checkpoint_path = "./models/attention8_model.pt"
+    checkpoint_path = "./models/attention10_model.pt"
 
     history = {
         "train": [],
@@ -347,7 +347,7 @@ if __name__ == "__main__":
         scheduler.step(val_loss)
 
 
-    history_path = "plot_data/training_history_attention8.json"
+    history_path = "plot_data/training_history_attention10.json"
 
     with open(history_path, "w") as f:
         json.dump(history, f, indent=4)
