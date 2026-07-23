@@ -3,11 +3,11 @@ import torch, json
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-from attention9 import ConvolutionalRecurrentNet
+from contrastive3 import ConvolutionalRecurrentNet
 from dataset2 import CFR
 from model_evaluation2 import evaluate_model
 
-history_path = "plot_data/training_history_attention10.json"
+history_path = "plot_data/training_history_contrastive3.json"
 with open(history_path, "r") as f:
     history = json.load(f)
 
@@ -34,15 +34,14 @@ plt.grid(True)
 
 
 plt.tight_layout()
-plt.savefig("./plot_data/training_curves_attention10.png")  # Salva il grafico come immagine sul PC
+plt.savefig("./plot_data/training_curves_contrastive3.png")  # Salva il grafico come immagine sul PC
 plt.show()
 
 
 # TESTING
 
 
-checkpoint_path = "./models/attention8_model.pt"
-checkpoint_path = "./models/attention10_model.pt"
+checkpoint_path = "./models/contrastive3_model.pt"
 checkpoint = torch.load(checkpoint_path)
 
 folders = [("../data/doppler_traces/S1", ["c"]), ("../data/doppler_traces/S4", ["a"]), ("../data/doppler_traces/S6", ["a"])]

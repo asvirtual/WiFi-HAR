@@ -164,6 +164,62 @@ this are the obtained results it seems like the regularization has bring some be
 
 We have also tried to increase the regularization by making the spectogram augmentation implement some kind of noise in the data, but in this way we receive a slighty more regularized model that is less stable and with slighty worst performances indeed it is maybe too conservative so we stick with the model obtained at the previous point.
 
+### Contrastive learning integration
+
+To further improve generalization and reduce overfitting to environment-specific patterns, we explored the use of contrastive learning as an auxiliary training signal in the attention-based models. The idea was not to replace the classification objective, but to encourage the network to learn embeddings that are more structured and less sensitive to the specific room, antenna position, or acquisition conditions. For this reason, we modified the architecture by adding a projection head on top of the shared representation obtained from the four antenna views. During training, each sample produced a projected embedding for each view, and a Supervised Contrastive Loss was computed on these embeddings so that samples belonging to the same class were pulled together while samples from different classes were pushed apart.
+
+Compared to the previous versions, the main changes were the following:
+
+- we kept the standard classification loss as the primary objective, but combined it with the contrastive loss in a weighted sum of the form $L = L_{CE} + \lambda L_{contrastive}$;
+- we introduced a warm-up schedule for the contrastive weight, so that the auxiliary loss became active gradually and did not destabilize the beginning of training;
+- we used a projection head separate from the classifier head, allowing the model to learn a representation optimized both for discrimination and for class-structure preservation;
+- we adapted the training pipeline so that the four antenna-view predictions were fused in a principled way before computing the classification loss, preserving a consistent supervision signal for the final decision, obtaining the following results respectively on different days, different environments and different persons:
+Model Evaluation Results:
+Accuracy : 83.52%
+Macro F1-Score  : 83.23%
+Model Evaluation Results:
+Accuracy : 85.90%
+Macro F1-Score  : 85.78%
+Model Evaluation Results:
+Accuracy : 86.79%
+Macro F1-Score  : 86.61%
+![Recurrent Curves Version2](./src/plot_data/training_curves_contrastive.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_contrastiveS1.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_contrastiveS4.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_contrastiveS6.png)
+
+- we also kept class-weighted cross-entropy and stronger regularization to mitigate the imbalance between classes and reduce overfitting:
+Model Evaluation Results:
+Accuracy : 82.62%
+Macro F1-Score  : 82.10%
+Model Evaluation Results:
+Accuracy : 83.68%
+Macro F1-Score  : 83.11%
+Model Evaluation Results:
+Accuracy : 81.89%
+Macro F1-Score  : 82.24%
+![Recurrent Curves Version2](./src/plot_data/training_curves_contrastive2.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_contrastive2S1.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_contrastive2S4.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_contrastive2S6.png)
+
+- we also tried to use attention in the choice of the more reliable antenna for the decisions
+Model Evaluation Results:
+Accuracy : 80.11%
+Macro F1-Score  : 79.82%
+Model Evaluation Results:
+Accuracy : 86.79%
+Macro F1-Score  : 86.44%
+Model Evaluation Results:
+Accuracy : 83.64%
+Macro F1-Score  : 83.95%
+![Recurrent Curves Version2](./src/plot_data/training_curves_contrastive3.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_contrastive3S1.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_contrastive3S4.png)
+![Confusion Matrices Rec Version2](./src/plot_data/confusion_matrix_contrastive3S6.png)
+
+The goal of this change was to make the learned representation more robust to domain shifts, especially in cases where the same activity is observed under different conditions. In practice, this added a regularization effect that helped the model focus on activity-relevant features rather than purely on spurious environmental cues.
+
 ## Person Identification task
 
 We want to develop a domain-invariant pipeline robust to subject recognition

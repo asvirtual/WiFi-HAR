@@ -88,13 +88,14 @@ class Normalize:
 
 class CFR(Dataset):
     LABEL_MAP = {
-        #"C": 0,
+        #"C": 7,
         "E": 0,
-        #"H": 2,
+        #"H": 5,
         "S": 1,
         "W": 2,
         "R": 3, 
         "J": 4,
+        #"L":6
     }
 
     # def sliding_window(self, matrix, window_size, stride):
