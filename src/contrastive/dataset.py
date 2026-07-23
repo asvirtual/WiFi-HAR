@@ -41,16 +41,29 @@ class SpectogramAugmentation:
 
 
 class CFR(Dataset):
+    # LABEL_MAP = {
+    #     "C": 0,
+    #     "E": 1,
+    #     "H": 2,
+    #     "J1": 3,
+    #     "J2": 3,
+    #     "L": 4,
+    #     "R": 5,
+    #     "S": 6,
+    #     "W": 7,
+    # }
+
     LABEL_MAP = {
-        "C": 0,
-        "E": 1,
-        "H": 2,
-        "J1": 3,
-        "J2": 3,
-        "L": 4,
-        "R": 5,
-        "S": 6,
-        "W": 7,
+        # "C": 0,
+        "E": 0,
+        # "H": 2,
+        # "J1": 3,
+        # "J2": 3,
+        # "L": 4,
+        "S": 1,
+        "W": 2,
+        "R": 3,
+        "J": 4
     }
 
     # def sliding_window(self, matrix, window_size, stride):
@@ -93,7 +106,13 @@ class CFR(Dataset):
                     if matrix.shape[0] < SAMPLE_SIZE_ROWS:
                         continue  # Skip files that are too short
 
-                    label_id = torch.tensor(self.LABEL_MAP[file.split("_")[1]]).long()
+                    label = file.split("_")[1]
+                    label = label[0].upper()
+
+                    if label not in self.LABEL_MAP:
+                        continue
+
+                    label_id = torch.tensor(self.LABEL_MAP[label]).long()
 
                     if self.use_multi_antenna:
                         event_key, antenna_key = self._split_event_and_antenna(file)
@@ -115,6 +134,8 @@ class CFR(Dataset):
                 min_length = min(matrix.shape[0] for matrix in antenna_matrices.values())
                 if min_length < SAMPLE_SIZE_ROWS:
                     continue
+
+                if event_key.split("_")[1] not in self.LABEL_MAP: continue
 
                 label_id = torch.tensor(self.LABEL_MAP[event_key.split("_")[1]]).long()
                 for index in range(0, min_length - SAMPLE_SIZE_ROWS + 1, stride):
