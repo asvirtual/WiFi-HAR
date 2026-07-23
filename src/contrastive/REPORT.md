@@ -91,6 +91,24 @@ More specifically, the experiment suggests that:
 
 So the pretraining version is a useful step forward, but not the final solution. It confirms that staged training is preferable, while also showing that the model architecture itself still needs improvement if we want cleaner class separation.
 
+### Reduced Label Set: New Findings
+
+After reducing the classification problem to 5 labels, the contrastive experiments improved significantly. The task became easier to optimize, the validation loss dropped much more cleanly, and the overall accuracy increased noticeably compared with the earlier multi-class setting. In practice, this meant that the representation learned by the encoder became more aligned with the smaller label space, and the contrastive pretraining strategy started to show its real benefit.
+
+We retrained both the regular contrastive model and the pretraining-based contrastive model after this label reduction. The versions saved as the contrastive_3 runs and the contrastive_pretrained_2 runs both reflected the same general pattern: better global metrics, better stability during training, and clearer separation for most classes.
+
+The one persistent weakness was the J activity. Even after the label reduction, the model still struggled to classify that class correctly. This suggests that J is either too heterogeneous, too close to one of the other remaining activities in the Doppler space, or simply underrepresented compared with the rest of the data. In other words, the label simplification helped the model a lot, but J remained the hardest case and kept limiting the final confusion matrix.
+
+### Conclusions From The 5-Label Setup
+
+The main conclusion is that label design matters as much as architecture. Once the number of classes was reduced, the same contrastive pipeline became much more effective, which means that part of the earlier difficulty was coming from the label space itself rather than from the model alone.
+
+This also suggests that the contrastive approach is a good fit for the 5-label version of the task, because it can now focus on separating a smaller set of more meaningful activity groups. The encoder pretraining remains useful here, and the fine-tuning stage becomes easier to optimize when the class structure is cleaner.
+
+At the same time, the remaining J confusion shows that there is still one weak point in the dataset/model pairing. The next step should therefore be to inspect that class more closely, either by looking at its confusion pattern against the other labels or by checking whether it needs a dedicated modeling strategy.
+
+So, overall, the 5-label setup is a strong improvement and confirms that the contrastive pipeline was on the right track. The reduced label space made the task more learnable, and both retrained contrastive variants benefited from that change, but the J class is still the main obstacle to full performance.
+
 
 
 -------------
