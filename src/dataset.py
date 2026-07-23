@@ -4,6 +4,7 @@ from torch import long
 import pickle
 import numpy as np
 import os, random
+from collections import defaultdict
 
 '''
 Folder/file naming and structure
@@ -61,17 +62,24 @@ class CFR(Dataset):
     #         #print(window.shape[0], window.shape[1])
     #     return torch.stack(windows)
 
-    def __init__(self, folder, campaigns, split_mode="train", stride=5, transform=None, max_samples=None):
+    def __init__(self, folder, campaigns, split_mode="train", stride=5, transform=None, max_samples=None, use_multi_antenna=False):
 
         self.matrices = []
         self.window_info = []
         self.split_mode = split_mode
+        self.use_multi_antenna = use_multi_antenna
+        self.grouped_matrices = defaultdict(dict)
+        self.grouped_window_info = []
+        self.transform = transform
+        self.max_samples = max_samples
 
         for campaign in campaigns:
-            if not os.path.exists(f"./{folder}{campaign}"):
+            campaign_path = f"./{folder}{campaign}"
+            if not os.path.exists(campaign_path):
                 continue
-            for file in os.listdir(f"./{folder}{campaign}"):
-                with open(f"{folder}{campaign}/{file}", "rb") as f:
+
+            for file in os.listdir(campaign_path):
+                with open(f"{campaign_path}/{file}", "rb") as f:
                     matrix = torch.from_numpy(pickle.load(f)).float()
                     if folder == "../data/doppler_traces/S1":
                         if split_mode == "val":
@@ -86,22 +94,67 @@ class CFR(Dataset):
                         continue  # Skip files that are too short
 
                     label_id = torch.tensor(self.LABEL_MAP[file.split("_")[1]]).long()
-                    mat_idx = len(self.matrices)
-                    self.matrices.append(matrix)
 
-                    total_frames = matrix.shape[0]
-                    for index in range(0, total_frames - SAMPLE_SIZE_ROWS + 1, stride):
-                        self.window_info.append((mat_idx, index, label_id))
+                    if self.use_multi_antenna:
+                        event_key, antenna_key = self._split_event_and_antenna(file)
+                        self.grouped_matrices[event_key][antenna_key] = matrix
+                    else:
+                        mat_idx = len(self.matrices)
+                        self.matrices.append(matrix)
 
-        self.transform = transform
-        self.max_samples = max_samples
+                        total_frames = matrix.shape[0]
+                        for index in range(0, total_frames - SAMPLE_SIZE_ROWS + 1, stride):
+                            self.window_info.append((mat_idx, index, label_id))
+
+        if self.use_multi_antenna:
+            for event_key, antenna_matrices in self.grouped_matrices.items():
+                if len(antenna_matrices) < 2:
+                    continue
+
+                ordered_antenna_keys = sorted(antenna_matrices.keys(), key=self._sort_antenna_key)
+                min_length = min(matrix.shape[0] for matrix in antenna_matrices.values())
+                if min_length < SAMPLE_SIZE_ROWS:
+                    continue
+
+                label_id = torch.tensor(self.LABEL_MAP[event_key.split("_")[1]]).long()
+                for index in range(0, min_length - SAMPLE_SIZE_ROWS + 1, stride):
+                    self.grouped_window_info.append((event_key, index, label_id, ordered_antenna_keys))
+
+    def _split_event_and_antenna(self, file_name):
+        stem = os.path.splitext(file_name)[0]
+        if "_" not in stem:
+            return stem, "0"
+        event_key, antenna_key = stem.rsplit("_", 1)
+        return event_key, antenna_key
+
+    def _sort_antenna_key(self, antenna_key):
+        if antenna_key.isdigit():
+            return (0, int(antenna_key))
+        antenna_order = {"a": 0, "b": 1, "c": 2, "d": 3}
+        return (1, antenna_order.get(antenna_key.lower(), antenna_key))
 
     def __len__(self):
+        if self.use_multi_antenna:
+            if self.max_samples is None:
+                return len(self.grouped_window_info)
+            return min(self.max_samples, len(self.grouped_window_info))
         if self.max_samples is None:
             return len(self.window_info)
         return min(self.max_samples, len(self.window_info))
 
     def __getitem__(self, idx):
+        if self.use_multi_antenna:
+            event_key, index, label_id, antenna_keys = self.grouped_window_info[idx]
+            views = []
+            for antenna_key in antenna_keys:
+                matrix = self.grouped_matrices[event_key][antenna_key]
+                x = matrix[index:index + SAMPLE_SIZE_ROWS, :].clone()
+                x = x.unsqueeze(0)
+                if self.transform:
+                    x = self.transform(x)
+                views.append(x)
+            return torch.stack(views, dim=0), label_id
+
         mat_idx, index, label_id = self.window_info[idx]
         matrix = self.matrices[mat_idx]
         # shape of the input: Time x Frequency (340x100)

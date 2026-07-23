@@ -1,11 +1,12 @@
 import json
+import os
 import torch
 import matplotlib.pyplot as plt
 from torch.nn import BatchNorm1d, InstanceNorm2d, Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
 import torch.nn.functional as F
 import numpy as np
 from torch.utils.data import DataLoader
-from dataset import CFR, SpectogramAugmentation
+from dataset import CFR
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import Adam
 from tqdm import tqdm
@@ -103,17 +104,33 @@ class ContrastiveBaselineNet(torch.nn.Module):
 BaselineNet = ContrastiveBaselineNet
 
 
-def build_contrastive_views(batch_x, transform, device, view_count=2):
-    views = []
-    for _ in range(view_count):
-        augmented_samples = []
-        for sample in batch_x:
-            sample = sample.detach().clone().cpu()
-            if transform is not None:
-                sample = transform(sample)
-            augmented_samples.append(sample)
-        views.append(torch.stack(augmented_samples, dim=0).to(device))
-    return views
+def get_contrastive_weight(epoch, target_weight, warmup_epochs):
+    if warmup_epochs <= 0:
+        return target_weight
+    warmup_progress = min(1.0, (epoch + 1) / warmup_epochs)
+    return target_weight * warmup_progress
+
+
+def save_checkpoint(checkpoint_path, model, optimizer, epoch, best_val, history, extra_metadata=None):
+    os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+    checkpoint = {
+        "epoch": epoch,
+        "best_val": best_val,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "history": history,
+    }
+    if extra_metadata is not None:
+        checkpoint["metadata"] = extra_metadata
+    torch.save(checkpoint, checkpoint_path)
+
+
+def load_checkpoint(checkpoint_path, model, optimizer=None, map_location=None):
+    checkpoint = torch.load(checkpoint_path, map_location=map_location)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    if optimizer is not None and "optimizer_state_dict" in checkpoint:
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    return checkpoint
 
 
 class InceptionModule(torch.nn.Module):
@@ -164,9 +181,8 @@ class InceptionModule(torch.nn.Module):
 
 if __name__ == "__main__":
     model = BaselineNet()
-    transform = SpectogramAugmentation()
-    train_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=5, transform=transform)
-    val_dataset = CFR(folder="../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5)
+    train_dataset = CFR(folder="../../data/doppler_traces/S1", campaigns=["a", "b"], split_mode="train", stride=5, transform=None, use_multi_antenna=True)
+    val_dataset = CFR(folder="../../data/doppler_traces/S1", campaigns=["c"], split_mode="val", stride=5, transform=None, use_multi_antenna=True)
 
     batch_size = 64
     num_workers = 0
@@ -188,11 +204,11 @@ if __name__ == "__main__":
     epochs = 50
     patience = 10
     counter = 0
-    contrastive_weight = 0.25
-    contrastive_view_count = 2
+    contrastive_weight = 0.15
+    contrastive_warmup_epochs = 3
 
     best_val = np.inf
-    checkpoint_path = "./models/baseline3_model.pt"
+    checkpoint_path = "./models/contrastive_best_checkpoint.pt"
 
     history = {
         "train": [],
@@ -219,19 +235,26 @@ if __name__ == "__main__":
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
 
-            augmented_views = build_contrastive_views(batch_x, transform, device, view_count=contrastive_view_count)
             view_logits = []
             view_features = []
-            for view in augmented_views:
-                logits, features = model(view, return_features=True)
+            for view_idx in range(batch_x.size(1)):
+                logits, features = model(batch_x[:, view_idx], return_features=True)
                 view_logits.append(logits)
-                view_features.append(features)
+                view_features.append(model.project(features))
 
-            projected_features = torch.stack([model.project(feature) for feature in view_features], dim=1)
+            stacked_logits = torch.stack(view_logits, dim=0)
+            mean_logits = stacked_logits.mean(dim=0)
+            classification_loss = loss_fn(mean_logits, batch_y)
 
-            classification_loss = torch.stack([loss_fn(logits, batch_y) for logits in view_logits]).mean()
+            projected_features = torch.stack(view_features, dim=1)
+
             contrastive_loss = contrastive_loss_fn(projected_features, batch_y)
-            loss = classification_loss + contrastive_weight * contrastive_loss
+            current_contrastive_weight = get_contrastive_weight(
+                epoch=epoch,
+                target_weight=contrastive_weight,
+                warmup_epochs=contrastive_warmup_epochs,
+            )
+            loss = classification_loss + current_contrastive_weight * contrastive_loss
 
             opt.zero_grad()
             loss.backward()
@@ -262,7 +285,14 @@ if __name__ == "__main__":
                 batch_x = batch_x.to(device)
                 batch_y = batch_y.to(device)
 
-                y_pred = model(batch_x)
+                if batch_x.dim() == 5:
+                    val_logits = []
+                    for view_idx in range(batch_x.size(1)):
+                        val_logits.append(model(batch_x[:, view_idx]))
+                    y_pred = torch.stack(val_logits, dim=0).mean(dim=0)
+                else:
+                    y_pred = model(batch_x)
+
                 batch_loss = loss_fn(y_pred, batch_y)
 
                 cumval_loss += batch_loss.item() * batch_x.size(0)
@@ -282,7 +312,21 @@ if __name__ == "__main__":
         # EARLY STOPPING
         if val_loss < best_val:
             print("Saved Model")
-            torch.save(model.state_dict(), checkpoint_path)
+            save_checkpoint(
+                checkpoint_path=checkpoint_path,
+                model=model,
+                optimizer=opt,
+                epoch=epoch + 1,
+                best_val=val_loss,
+                history=history,
+                extra_metadata={
+                    "contrastive_weight": contrastive_weight,
+                    "current_contrastive_weight": current_contrastive_weight,
+                    "contrastive_warmup_epochs": contrastive_warmup_epochs,
+                    "use_multi_antenna": True,
+                    "temperature": contrastive_loss_fn.temperature,
+                },
+            )
             best_val = val_loss
             counter = 0
         else:
