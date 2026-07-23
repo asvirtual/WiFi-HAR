@@ -8,6 +8,14 @@ def evaluate_model(model, test_loader, device, label_map, save_dir="./plot_data"
 
     os.makedirs(save_dir, exist_ok=True)
     model.eval()
+
+def _forward_with_optional_views(model, x_batch):
+    if x_batch.dim() == 5:
+        outputs = []
+        for view_idx in range(x_batch.size(1)):
+            outputs.append(model(x_batch[:, view_idx]))
+        return torch.stack(outputs, dim=0).mean(dim=0)
+    return model(x_batch)
     
     all_preds = []
     all_targets = []
@@ -29,8 +37,9 @@ def evaluate_model(model, test_loader, device, label_map, save_dir="./plot_data"
             outputs = model(x_batch)
             preds = torch.argmax(outputs, dim=1)
             
-            all_preds.extend(preds.cpu().numpy())
+            outputs = _forward_with_optional_views(model, x_batch)
             all_targets.extend(y_batch.cpu().numpy())
+
 
     all_preds = np.array(all_preds)
     all_targets = np.array(all_targets)
@@ -38,6 +47,7 @@ def evaluate_model(model, test_loader, device, label_map, save_dir="./plot_data"
     # Metrics of Evaluation
     overall_acc = accuracy_score(all_targets, all_preds)
     macro_f1 = f1_score(all_targets, all_preds, average='macro')
+
 
     print("Model Evaluation Results:")
     print(f"Accuracy : {overall_acc * 100:.2f}%")
@@ -60,8 +70,8 @@ def evaluate_model(model, test_loader, device, label_map, save_dir="./plot_data"
     disp_norm = ConfusionMatrixDisplay(confusion_matrix=cm_norm, display_labels=class_names)
     disp_norm.plot(ax=axes[1], cmap='Greens', colorbar=False, values_format='.1%')
     axes[1].set_title("Normalized Confusion Matrix (Recall)", fontsize=12, fontweight='bold')
-    axes[1].tick_params(axis='x', rotation=45)
-
+                        outputs = _forward_with_optional_views(model, x_batch)
+                        preds = torch.argmax(outputs, dim=1)
     plt.tight_layout()
     cm_path = os.path.join(save_dir, "confusion_matrix_recurrent3.png")
     plt.savefig(cm_path, dpi=300)
