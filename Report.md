@@ -287,3 +287,115 @@ Although the Weighted Ensemble achieved an **89% Macro F1-Score**, The ensemble 
 2. **Computational Efficiency and Latency:** Using a single model eliminates memory overhead and drastically reduces inference time, which is essential for deployment on *Edge* devices (e.g., Wi-Fi routers).
 
 ![Confusion Matrices PID Version](./person_identification/models/confusion_matrix.png)
+
+# Contrastive Learning Report
+
+This document summarizes the contrastive-learning experiment we ran on top of the Wi-Fi Doppler activity classifier, the results we observed, and the most reasonable next directions.
+
+### What We Tried
+
+We started from the convolutional baseline and added a supervised contrastive learning objective in order to make the latent space more discriminative. The encoder was kept the same, while a projection head was added only for the contrastive branch.
+
+At first, we used augmented versions of the same spectrogram window as positive pairs, following the same masking strategy already used in the baseline. The goal was to make the model learn invariances while still predicting the activity label with cross-entropy.
+
+Later, after noticing that the masking was probably too aggressive, we switched to a cleaner formulation where the four antenna recordings of the same event were used as aligned positive views. This was a more meaningful source of positives because the antennas observe the same action from slightly different perspectives.
+
+The final training objective was a weighted sum of:
+
+- label-smoothed cross-entropy for classification;
+- supervised contrastive loss for representation learning.
+
+We also introduced a warm-up for the contrastive term so that the classification part could stabilize first.
+
+### What The Training Showed
+
+The training curves were initially encouraging. During the best run, the model reached roughly 0.72 validation accuracy at its peak, while the validation loss dropped to around 1.0 at best. This looked promising at first glance, because it suggested that the encoder was learning something useful and that the contrastive branch was not completely destabilizing training.
+
+However, after looking at the evaluation more carefully, the result was not as strong as the raw accuracy number suggested.
+
+The final evaluation of the second contrastive model gave:
+
+- Accuracy: 58.96%
+- Macro F1-score: 57.25%
+
+The best validation loss during training was about 1.25, and the best validation accuracy was around 61.2%, but the confusion matrix showed that the model was still mixing several difficult classes. In other words, the model was not truly separating the activities well; it was often getting the right global score while still confusing the important classes.
+
+### What Did Not Work Well
+
+The first issue was the masking. Strong time and frequency masking made the task harder than it should have been, especially when the same masked views were also used for the contrastive branch. In practice, this likely destroyed some of the spectral structure that the model needed to preserve.
+
+The second issue was that the contrastive objective was too difficult too early in training. The training loss remained noticeably higher than the validation loss, which is not automatically a bug in this setting, but it does indicate that the model was seeing a harder optimization problem during training than during evaluation.
+
+The third issue was that the confusion matrix did not match the improvement suggested by the accuracy curve. The model still confused the more similar activities and the lower-energy classes, which means the representation was not yet robust enough for fine-grained recognition.
+
+So although the aggregate numbers were not terrible, the model was still underperforming in the sense that it did not produce a clean class separation.
+
+### Best Conclusions So Far
+
+The most important conclusion is that contrastive learning does help to structure the embedding space, but only if the positive pairs are meaningful.
+
+The four antennas are a better source of positives than synthetic masking alone, because they correspond to the same real event and therefore preserve the underlying activity label more faithfully.
+
+Another conclusion is that the model likely benefits more from stable, semantically valid views than from heavy augmentation. For this dataset, too much masking seems to remove signal instead of removing nuisance.
+
+Finally, the contrastive branch should probably be treated as a regularizer or a pretraining signal, not as the sole thing driving the whole training process from the first epoch.
+
+### Brainstorming: What Should We Try Next?
+
+The next iteration should focus on making the positive pairs cleaner and the optimization less noisy. The most sensible directions are:
+
+- pretrain the encoder with supervised contrastive learning on the four antenna views, then fine-tune with cross-entropy only;
+- reduce masking even further, or remove it entirely from the contrastive branch;
+- keep the clean spectrogram for classification and use the antenna views only for the contrastive objective;
+- test a stronger multi-view fusion strategy, instead of just averaging the logits across antennas;
+- move the contrastive experiment onto the stronger recurrent or late-fusion backbone, since temporal modeling already helped in the non-contrastive experiments;
+- build more balanced batches so that supervised contrastive loss sees enough same-class positives in each batch;
+- tune the contrastive temperature and projection head size only after the view strategy is stable.
+
+### Short Summary
+
+The contrastive experiment was not a failure, but it was also not the final answer. It improved the representation somewhat, and the antenna-based positive pairs are a better idea than masking alone, but the confusion matrix shows that the model still lacks the class separation we need. The next step should therefore be to simplify the augmentation, use the antennas more carefully, and probably combine contrastive learning with a stronger temporal backbone.
+
+### Pretraining Version: What We Tried
+
+In the second contrastive version, we changed the training scheme from a single mixed objective to a two-stage pipeline. First, we pre-trained the encoder with supervised contrastive learning on the four antenna views of the same event. In this stage, the backbone and projection head were optimized to bring embeddings of the same activity closer together, while the classifier was kept out of the objective.
+
+After that, we fine-tuned the model with cross-entropy only. The idea was to let the encoder learn a better activity representation first, and then let the classifier specialize on top of those features. This was meant to reduce the instability we saw when the contrastive and classification losses were optimized together from the beginning.
+
+### Pretraining Version: What The History Shows
+
+The pretraining loss decreased slowly but did not show a strong separation between train and validation behavior. In fact, the validation contrastive loss stayed high and noisy across epochs, which suggests that the encoder was learning useful structure only partially. The best encoder checkpoint was saved early, but the later pretraining epochs did not visibly improve the situation.
+
+The fine-tuning stage was more interesting. The model reached peaks around 0.72 to 0.75 validation accuracy and even hit a best value close to 0.76 at one point, which is better than the earlier contrastive version. At the same time, the validation loss remained unstable, and the model repeatedly moved between better and worse epochs. The early stopping at the end also confirms that the training was not converging in a clean way.
+
+### Conclusions From The Pretraining Run
+
+The main conclusion is that pretraining the encoder was the right idea, but it was not enough by itself to solve the classification problem. The staged setup was more sensible than mixing everything from the first epoch, because it gave the model a clearer optimization path. Even so, the final behavior still shows that the representation is not fully robust for all classes.
+
+More specifically, the experiment suggests that:
+
+- the four antenna views are still a better positive signal than masking;
+- the encoder benefits from contrastive pretraining, but the gain is limited if the backbone is not strong enough;
+- fine-tuning improves the validation accuracy, but the confusion matrix likely remains the real bottleneck;
+- the training is still noisy enough that a stronger backbone or a better multi-view fusion strategy may be needed next.
+
+So the pretraining version is a useful step forward, but not the final solution. It confirms that staged training is preferable, while also showing that the model architecture itself still needs improvement if we want cleaner class separation.
+
+### Reduced Label Set: New Findings
+
+After reducing the classification problem to 5 labels, the contrastive experiments improved significantly. The task became easier to optimize, the validation loss dropped much more cleanly, and the overall accuracy increased noticeably compared with the earlier multi-class setting. In practice, this meant that the representation learned by the encoder became more aligned with the smaller label space, and the contrastive pretraining strategy started to show its real benefit.
+
+We retrained both the regular contrastive model and the pretraining-based contrastive model after this label reduction. The versions saved as the contrastive_3 runs and the contrastive_pretrained_2 runs both reflected the same general pattern: better global metrics, better stability during training, and clearer separation for most classes.
+
+The one persistent weakness was the J activity. Even after the label reduction, the model still struggled to classify that class correctly. This suggests that J is either too heterogeneous, too close to one of the other remaining activities in the Doppler space, or simply underrepresented compared with the rest of the data. In other words, the label simplification helped the model a lot, but J remained the hardest case and kept limiting the final confusion matrix.
+
+### Conclusions From The 5-Label Setup
+
+The main conclusion is that label design matters as much as architecture. Once the number of classes was reduced, the same contrastive pipeline became much more effective, which means that part of the earlier difficulty was coming from the label space itself rather than from the model alone.
+
+This also suggests that the contrastive approach is a good fit for the 5-label version of the task, because it can now focus on separating a smaller set of more meaningful activity groups. The encoder pretraining remains useful here, and the fine-tuning stage becomes easier to optimize when the class structure is cleaner.
+
+At the same time, the remaining J confusion shows that there is still one weak point in the dataset/model pairing. The next step should therefore be to inspect that class more closely, either by looking at its confusion pattern against the other labels or by checking whether it needs a dedicated modeling strategy.
+
+So, overall, the 5-label setup is a strong improvement and confirms that the contrastive pipeline was on the right track. The reduced label space made the task more learnable, and both retrained contrastive variants benefited from that change, but the J class is still the main obstacle to full performance.
+
