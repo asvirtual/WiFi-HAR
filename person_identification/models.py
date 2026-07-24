@@ -10,7 +10,7 @@ from torch.nn import CrossEntropyLoss
 from tqdm import tqdm
 
 import matplotlib.pyplot as plt
-
+import torch.nn as nn
 from torch.nn import Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, InstanceNorm1d,InstanceNorm2d
 
 
@@ -18,8 +18,6 @@ class InceptionModule(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.block1 = MaxPool2d(kernel_size=2, stride=2)
-        
-        # ORA in_channels = 4 (Le 4 Antenne!)
         self.convBlock1 = Conv2d(kernel_size=2, stride=2, in_channels=4, out_channels=16)
 
         self.convBlock2 = Sequential(                   
@@ -43,21 +41,10 @@ class InceptionModule(torch.nn.Module):
         x1 = self.block1(x)
         x2 = self.relu(self.convBlock1(x))
         x3 = self.convBlock2(x)
-        # Output shape: 4 (x1) + 16 (x2) + 32 (x3) = 52 canali
         return torch.cat((x1, x2, x3), dim=1)
 
 
-import torch
-import torch.nn as nn
-from torch.nn import Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, BatchNorm1d, InstanceNorm2d
 
-# ... (Qui sopra rimane il tuo InceptionModule con in_channels=4 esattamente come lo hai già) ...
-
-import torch
-import torch.nn as nn
-from torch.nn import Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, BatchNorm1d, BatchNorm2d, InstanceNorm1d, InstanceNorm2d
-
-# ... (Qui sopra rimane intatto il tuo InceptionModule) ...
 
 class BaselineNet(torch.nn.Module):
     def __init__(self, num_classes=3):  # 3 Uscite per P0, P1, P2
@@ -66,17 +53,13 @@ class BaselineNet(torch.nn.Module):
         self.backbone = Sequential(
             InceptionModule(),
             Conv2d(kernel_size=1, stride=1, padding=0, in_channels=52, out_channels=16),
-            #BatchNorm2d(16),
-            #InstanceNorm2d(16),
             ReLU(),
             MaxPool2d(kernel_size=2, stride=2),
             Flatten(),
-            Dropout(0.1),  # Il tuo Dropout robusto allo 0.4!
+            Dropout(0.2),
             Linear(in_features=34000, out_features=256),
-            #BatchNorm1d(256),
-            #InstanceNorm1d(256),
             ReLU(),
-            Dropout(0.2)   # Il tuo Dropout robusto allo 0.4!
+            Dropout(0.1)   
         )
         
         

@@ -11,11 +11,10 @@ from tqdm import tqdm
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from models import BaselineNet
 from sklearn.metrics import f1_score
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from sklearn.metrics import f1_score
 
 
-# =====================================================================
-# 1. DEFINIZIONE DATA AUGMENTATION (Risolve l'errore "transform non definita")
-# =====================================================================
 class DopplerAugmentation:
     def __init__(self, noise_std=0.02, scale_range=(0.8, 1.2), max_time_mask=30):
         self.noise_std = noise_std
@@ -23,24 +22,22 @@ class DopplerAugmentation:
         self.max_time_mask = max_time_mask
 
     def __call__(self, x):
-        # 1. Random Scaling
+        
         scale_factor = torch.empty(1).uniform_(*self.scale_range).item()
         x = x * scale_factor
         
-        # 2. Time Masking (Simula perdita pacchetti)
+        
         if torch.rand(1).item() > 0.5:
             mask_len = torch.randint(10, self.max_time_mask, (1,)).item()
             t0 = torch.randint(0, max(1, x.shape[1] - mask_len), (1,)).item()
             x[:, t0:t0+mask_len, :] = 0.0
             
-        # 3. Gaussian Noise
+        
         noise = torch.randn_like(x) * self.noise_std
         x = x + noise
         return x
 
-# =====================================================================
-# 2. DEFINIZIONE LOSS CONTRASTIVA E VISTE
-# =====================================================================
+
 class SupervisedContrastiveLoss(nn.Module):
     def __init__(self, temperature=0.2):
         super().__init__()
@@ -78,17 +75,15 @@ def build_contrastive_views(batch_x, transform, device, view_count=2):
         views.append(torch.stack(augmented_samples, dim=0).to(device))
     return views
 
-# =====================================================================
-# 3. CONFIGURAZIONE DATASET E MODELLO
-# =====================================================================
+
 model = BaselineNet()
 
-# Istanziamo la trasformazione qui, pronta per essere usata nel training!
+
 transform = DopplerAugmentation(noise_std=0.02, scale_range=(0.8, 1.2), max_time_mask=30)
 
 
 
-# 1. TRAINING SET (La palestra di invarianza)
+# 1. TRAINING SET
 
 campagne_train = [
     "S1a", "S4a",  # P0: 
@@ -96,15 +91,15 @@ campagne_train = [
     "S7a"          # P2: 
 ]
 
-# 2. VALIDATION SET (Termometro pulito per l'Early Stopping)
+# 2. VALIDATION SET 
 campagne_val = [
     "S1b", "S1c",  # P0: 
     "S3a", "S5a",  # P1: 
     "S7a"          # P2: 
 ]
 
-# 3. TEST SET (L'esame finale: Zero-Shot su stanze nuove + Stress Test)
-# Selezioniamo un numero mirato di sessioni per P0 per NON sbilanciare la Matrice.
+# 3. TEST SET 
+
 campagne_test = [
     "S2a",         # P0: ZERO-SHOT 1 
     "S6a",         # P0: ZERO-SHOT 2 
@@ -127,8 +122,8 @@ train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True
 valid_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
 test_dataloader  = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
 
-opt = Adam(model.parameters(), lr=1e-4, weight_decay=5e-4)
-loss_fn = CrossEntropyLoss() # Usata per la validazione standard
+
+loss_fn = CrossEntropyLoss() 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 
@@ -137,20 +132,21 @@ patience = 15
 counter = 0
 best_val = np.inf
 checkpoint_path = "best_model.pt"
-
+opt = Adam(model.parameters(), lr=1e-4, weight_decay=1e-3)
+scheduler = CosineAnnealingLR(opt, T_max=epochs, eta_min=1e-5)
 history = {"train": [], "val": [], "acc": []}
 
 loss_ce_fn = CrossEntropyLoss()
 loss_supcon_fn = SupervisedContrastiveLoss(temperature=0.2)
 contrastive_weight = 0.25
 
-from sklearn.metrics import f1_score
 
-# =====================================================================
-# 4. TRAINING & VALIDATION LOOP
-# =====================================================================
-# Inizializziamo il best value a 0.0 perché vogliamo MASSIMIZZARE l'F1-Score!
-best_val_f1 = 0.0  
+
+# TRAINING & VALIDATION LOOP
+
+
+best_val_f1 = 0.0
+min_delta=0.01 
 history = {"train": [], "val": [], "acc": [], "f1": []}
 
 epochs_pbar = tqdm(range(epochs), desc="Training Progress", unit="epoch")
@@ -199,7 +195,7 @@ for epoch in epochs_pbar:
     nval_correct = 0
     nval = 0
     
-    # Liste per accumulare predizioni e target per calcolare l'F1-Score
+    
     val_preds = []
     val_targets = []
 
@@ -216,14 +212,14 @@ for epoch in epochs_pbar:
             predictions = y_pred.argmax(dim=1)
             nval_correct += (predictions == batch_y).sum().item()
             
-            # Salviamo per il calcolo del Macro F1
+            
             val_preds.extend(predictions.cpu().numpy())
             val_targets.extend(batch_y.cpu().numpy())
 
     val_loss = cumval_loss / nval
     val_acc = nval_correct / nval
     
-    # CALCOLO DEL MACRO F1 DI VALIDAZIONE
+    
     val_macro_f1 = f1_score(val_targets, val_preds, average='macro')
     
     history["val"].append(val_loss)
@@ -237,8 +233,8 @@ for epoch in epochs_pbar:
         "Val F1": f"{val_macro_f1*100:.2f}%"
     })
 
-    # NUOVA LOGICA DI SALVATAGGIO: Salva quando il Macro F1-Score è MASSIMO!
-    if val_macro_f1 > best_val_f1:
+   
+    if val_macro_f1 > best_val_f1+min_delta:
         torch.save(model.state_dict(), checkpoint_path)
         best_val_f1 = val_macro_f1
         counter = 0
@@ -246,20 +242,21 @@ for epoch in epochs_pbar:
         counter += 1
 
     if counter >= patience:
-        epochs_pbar.write(f"\n[EARLY STOPPING] Macro F1 di validazione non migliora da {patience} epoche.")
+        epochs_pbar.write(f"\n[EARLY STOPPING] Validation Macro F1 di is not improved after {patience} epochs.")
         break
+    scheduler.step()
 
 
-# =====================================================================
-# 5. VALUTAZIONE FINALE E GRAFICI
-# =====================================================================
+ 
+# PLOT 
+
 plt.figure(figsize=(12, 5))
 
 plt.subplot(1, 2, 1)
 plt.plot(history["train"], label="Train Loss", color="blue", lw=2)
 plt.plot(history["val"], label="Validation Loss", color="orange", lw=2)
-plt.title("Andamento della Loss")
-plt.xlabel("Epoche")
+plt.title("Loss behaviour")
+plt.xlabel("Epochs")
 plt.ylabel("Loss")
 plt.legend()
 plt.grid(True)
@@ -267,8 +264,8 @@ plt.grid(True)
 plt.subplot(1, 2, 2)
 plt.plot(history["acc"], label="Val Accuracy", color="green", lw=2)
 plt.plot(history["f1"], label="Val Macro F1", color="purple", lw=2, linestyle="--")
-plt.title("Metriche di Validazione")
-plt.xlabel("Epoche")
+plt.title("EVALUATON METRICS")
+plt.xlabel("Epochs")
 plt.ylabel("Score")
 plt.legend()
 plt.grid(True)
@@ -277,7 +274,7 @@ plt.tight_layout()
 plt.savefig("training_curves.png")
 plt.show()
 
-print("\n--- Valutazione sul Test Set ---")
+print("\n---TEST SET EVALUATION---")
 model.load_state_dict(torch.load(checkpoint_path))
 model.eval()
 
@@ -307,23 +304,33 @@ with torch.no_grad():
 test_loss = cumtest_loss / ntest
 test_acc = ntest_correct / ntest
 test_macro_f1 = f1_score(all_targets, all_preds, average='macro')
+
+
+class_f1_scores = f1_score(all_targets, all_preds, average=None)
+
 test_conf = np.exp(-test_loss) * 100
 
 print(f"Test Loss: {test_loss:.4f}")
-print(f"Confidenza Media: {test_conf:.2f}% | Accuracy Finale: {test_acc*100:.2f}% | Macro F1 Finale: {test_macro_f1*100:.2f}%\n")
+print(f"Confidenza Media: {test_conf:.2f}% | Final Accuracy: {test_acc*100:.2f}% | Final Macro F1: {test_macro_f1*100:.2f}%\n")
+print(f"F1-Score per classe -> P0: {class_f1_scores[0]*100:.2f}% | P1: {class_f1_scores[1]*100:.2f}% | P2: {class_f1_scores[2]*100:.2f}%")
 
-cm = confusion_matrix(all_targets, all_preds, labels=[0, 1, 2])
-fig, ax = plt.subplots(figsize=(8, 6))
-display_labels = ['Persona 0 (P0)', 'Persona 1 (P1)', 'Persona 2 (P2)']
+
+cm = confusion_matrix(all_targets, all_preds, labels=[0, 1, 2], normalize='true')
+fig, ax = plt.subplots(figsize=(9, 7))
+
+
+display_labels = [
+    f'P0\n[F1: {class_f1_scores[0]*100:.1f}%]', 
+    f'P1\n[F1: {class_f1_scores[1]*100:.1f}%]', 
+    f'P2\n[F1: {class_f1_scores[2]*100:.1f}%]'
+]
 
 disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=display_labels)
-disp.plot(cmap='Blues', values_format='d', ax=ax)
+disp.plot(cmap='Blues', values_format='.1%', ax=ax)
 
-plt.title(f"Matrice di Confusione (Test Acc: {test_acc*100:.1f}% | F1: {test_macro_f1*100:.1f}%)", pad=15)
-plt.xlabel("Etichetta Predetta (Modello)")
-plt.ylabel("Etichetta Reale (Ground Truth)")
+plt.title(f"Confusion Matrix\nAcc: {test_acc*100:.1f}% | Macro F1: {test_macro_f1*100:.1f}%", pad=15)
+plt.xlabel("PREDICTED LABEL", labelpad=10)
+plt.ylabel("TRUE LABEL", labelpad=10)
 plt.tight_layout()
-
-plt.savefig("confusion_matrix_test.png", dpi=300)
-print("--> Grafico salvato come 'confusion_matrix_test.png'")
+plt.savefig("confusion_matrix.png", dpi=300)
 plt.show()
