@@ -277,3 +277,11 @@ adding the recurrent layers caused a massive performance drop on our Zero-Shot b
 In Activity Recognition (HAR), time matters—an action evolves sequentially But Human Identity is all about instantaneous micro-Doppler frequency bursts caused by how hard someone's heel strikes the floor or how their limbs swing. Running these quick frequency spikes through a bidirectional LSTM and attention pooling effectively "smoothed them out," washing away the exact biometric details we needed.
 
 We reverted to our **Pure Convolutional Backbone (`Inception + SupCon Projector Head`)**.
+
+### Evaluation of Ensemble Strategies and Final Selection
+
+Although the Weighted Ensemble achieved an **89% Macro F1-Score**, The ensemble approach was discarded for the final configuration.
+
+#### Technical Rationale and Advantages:
+1. **High Predictive Correlation:** The models share the same architecture and fail on the exact same physical distortions (*extreme Multipath in Zero-Shot environments*). The ensemble does not correct error residuals, merely averaging confidence.
+2. **Computational Efficiency and Latency:** Using a single model eliminates memory overhead and drastically reduces inference time, which is essential for deployment on *Edge* devices (e.g., Wi-Fi routers).
