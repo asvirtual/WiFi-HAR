@@ -1,17 +1,7 @@
 import torch
-import matplotlib.pyplot as plt
-from torch.nn import AdaptiveAvgPool2d, Conv2d, Dropout2d, MaxPool2d, ReLU, Softmax, Dropout, Sequential, Linear, Flatten, BatchNorm2d, BatchNorm1d
+from torch.nn import Conv2d, Dropout2d, MaxPool2d, ReLU,Dropout, Sequential, Linear, Flatten, CrossEntropyLoss
 import numpy as np
-from torch.utils.data import DataLoader, Dataset, random_split
-from torchvision.transforms import ToTensor
-from dataset import CFR_PersonID_4Channels as CFR_PersonID
-from torch.optim import SGD, Adam
-from torch.nn import CrossEntropyLoss
-from tqdm import tqdm
 
-import matplotlib.pyplot as plt
-import torch.nn as nn
-from torch.nn import Conv2d, MaxPool2d, ReLU, Dropout, Sequential, Linear, Flatten, InstanceNorm1d,InstanceNorm2d
 
 
 class InceptionModule(torch.nn.Module):
@@ -46,8 +36,8 @@ class InceptionModule(torch.nn.Module):
 
 
 
-class BaselineNet(torch.nn.Module):
-    def __init__(self, num_classes=3):  # 3 Uscite per P0, P1, P2
+class InceptionCNN(torch.nn.Module):
+    def __init__(self, num_classes=3):  
         super().__init__()
         
         self.backbone = Sequential(
@@ -72,11 +62,9 @@ class BaselineNet(torch.nn.Module):
             Linear(in_features=128, out_features=64)
         )
         
-        self.apply(self._init_weights)
-
     def _init_weights(self, module):
-        if isinstance(module, (nn.Linear, nn.Conv2d)):
-            nn.init.xavier_uniform_(module.weight)
+        if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d)):
+            torch.nn.init.xavier_uniform_(module.weight)
             if module.bias is not None:
                 module.bias.data.zero_()
 
@@ -92,3 +80,4 @@ class BaselineNet(torch.nn.Module):
             return logits, projection
             
         return logits
+
