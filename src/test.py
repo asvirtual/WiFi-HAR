@@ -41,7 +41,7 @@ plt.show()
 # TESTING
 
 
-checkpoint_path = "./models/contrastive3_model.pt"
+checkpoint_path = "./models/recurrent_model.pt"
 checkpoint = torch.load(checkpoint_path)
 
 folders = [("../data/doppler_traces/S1", ["c"]), ("../data/doppler_traces/S4", ["a"]), ("../data/doppler_traces/S6", ["a"])]
